@@ -2,3 +2,7 @@
 *.in linguist-detectable=false
 *.rst linguist-detectable=false
 *.png linguist-detectable=false
+*.ini linguist-detectable=false
+.DS_Store linguist-detectable=false
+
+test/* linguist-vendored
