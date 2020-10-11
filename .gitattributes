@@ -1,0 +1,4 @@
+*.py linguist-detectable=true
+*.in linguist-detectable=false
+*.rst linguist-detectable=false
+*.png linguist-detectable=false
