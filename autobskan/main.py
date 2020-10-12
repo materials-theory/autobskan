@@ -4,7 +4,7 @@ __author__ = "Giyeok Lee"
 __email__ = "lgy4230@yonsei.ac.kr"
 __date__ = "Oct 11, 2020"
 __maintainer__ = "Giyeok Lee"
-__version__ = "1.1.3"
+__version__ = "1.1.4"
 __copyright__ = "Copyright (c) Materials Theory Group @ Yonsei University (2020)"
 
 

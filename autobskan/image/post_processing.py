@@ -11,7 +11,7 @@ from PIL import Image
 # -------------------------------------------------------------------------------- [image iterating] -> generate png and save it to generated_iter/ directory
 def image_iter(file, x, y, gamma, name, savedir="generated_iter"):
     im = Image.open(file)
-    im = im.resize(np.array(np.array(im.size)/max(x, y), dtype=int)) # somewhat numerical error due to integer pixels..
+    im = im.resize(np.array(np.round(np.array(im.size)/max(x, y)), dtype=int)) # somewhat numerical error due to integer pixels..
     size_x, size_y = im.size
     if np.round(gamma, 4) in [60., 120.]:
         gamma = 90

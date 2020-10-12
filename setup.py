@@ -30,5 +30,7 @@ setup(name='autobskan',
           ],
       install_requires=['numpy', 'scipy', 'ase', 'autobskan',
                         'Pillow', 'matplotlib'],
-      entry_points = {'console_scripts':['autobskan = autobskan.main:main']}
+      entry_points = {'console_scripts':['autobskan = autobskan.main:main',
+      'autobskan-post = autobskan.entries.post_processing-entry:main',
+      'autobskan-collect = autobskan.entries.file_collector:main']}
       )
