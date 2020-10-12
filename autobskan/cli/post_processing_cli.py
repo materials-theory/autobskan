@@ -100,11 +100,11 @@ def main():
     pars = argparse.ArgumentParser()
     pars.add_argument('-n', type = int,nargs=2,default=[4, 2], help='number of iteration. nx ny')
     pars.add_argument('-gamma', type=str, default=90.0, help="gamma value or the name of structure")
-    pars.add_argument('-m', type = int, help='Which task do you want. 1=Do all tasks, 2=iteration+blur, 3=remove black edge+iteration, 4=only remove black edge, 5=only iterating, 6=only blur', default=1)
+    pars.add_argument('-m', type = int, help='Which task do you want. 1=Do all tasks, 2=iteration+blur, 3=remove black edge+iteration, 4=only remove black edge, 5=only iterating, 6=only blur', default=2)
     pars.add_argument('-bm',type=int,help='blur mode. (how to select blur sigma) 1:single blur sigma value(bsv), 2:range of blur sigma value(bsl)',choices=[1,2], default=1)
     pars.add_argument('-bsv',type=float, default='5',help='single blur sigma value (when you choose blur mode=1)')
     pars.add_argument('-bsl',type=str,nargs=2,default=['20', '25'],help="range of blur sigma value. (when you choose blur mode=2)")
-    pars.add_argument('-ext',type=str,default='tiff',help="format of input images (ex. png, tiff, jpg)")
+    pars.add_argument('-ext',type=str,default='png',help="format of input images (ex. png, tiff, jpg)")
     args = pars.parse_args()
 
     mode, blur_mode, blur_sigma, blur_sigma_r, ext, gamma = args.m, args.bm, args.bsv, args.bsl, args.ext, str(args.gamma)
