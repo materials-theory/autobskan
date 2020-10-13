@@ -24,8 +24,8 @@ def gy_norm(X, norm_factor=0, min_val=0, max_val=1):
         return (X - X.min()) / (X.max()-X.min()) * (max_val-min_val) + min_val
     else:
         tmp = gy_norm(X, 0, 0, 1)
-        norm_factor = 10 ** norm_factor
-        return gy_norm((tmp/10)**(1/norm_factor)*10, 0, min_val, max_val)
+        power = 10 ** norm_factor
+        return gy_norm(tmp**power, 0, min_val, max_val)
 
 class Surf:
     # adopted from TMCN projects
