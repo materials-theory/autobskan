@@ -36,7 +36,7 @@ def parse_input(raw_options): # 파일 인풋 형식에 따라 구분해둠
     for i in ["BIAS", "ISO"]: # _와 &를 사용해 여러 값을 넣는 경우
         if i in raw_options:
             option_dict[i] = str_to_range(raw_options[i])
-    for i in ["ISO_AUTO"]: # True or False를 받는 경우
+    for i in ["ISO_AUTO", "POST_PROCESSING"]: # True or False를 받는 경우
         if i == "ISO_AUTO" and raw_options[i].startswith("L"):
             option_dict[i] = "LOGSCALE"
             # LOGSCALE 추가됨. (2020.08.29) LOGSCALE이 아닌 경우 TorF 실행
