@@ -1,0 +1,29 @@
+MODE = Image
+
+# (1) Calculation Parts
+# VASP = df
+# BSKAN = command of excuting BSKAN binary (ex. mpirun -np 8 ~/programs/VASP/norm_std.x > stdout.log)
+# METHOD = TH / CHEN / BARDEEN
+# you can also write th/ch/ba
+# BIAS = start_end_steps&value
+# |
+# |___1) If you put separator "_", such as -0.01_0.01_0.02 this case,
+#	   it is regarded as MIN MAX INCREMENTS to make list. So result will be [-0.01, 0.01] in this example.
+# 	2) If the separator is & symbol, it is regarded as ingredients of lists.
+# 	   For example, 0.02 & 0.05 will be regarded as [0.02, 0.05].
+#	3) Or you can write the combination of 1) and 2).
+#	   For example, "-0.05_0.01_0.02 & 0.00" will give you array([-0.05,-0.03,-0.01,0.,0.01])
+
+
+# (2) Image Parts
+CURRENT = CURRENT_29_-1.0  # bskan output, we can use regular expressions
+ISO_AUTO = LOG             # automatic selection of isosurface values
+CMAP = afmhot              # colormap setting (matplotlib)
+CONTRAST = 0.2             # increase contrast
+BRIGHTNESS  = -0.3         # decrease the brightness
+POSCAR = 29-structure.vasp # structure file(POSCAR) for both iteration and plotting atoms
+LAYERS = 1                 # plot the outmost layer on generated images
+
+# (3)) Postprocessing Parts
+POST_PROCESSING = True     # turn on post_processing (iteration, blurring) or not
+ITERATION = 2, 2           # 
