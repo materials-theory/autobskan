@@ -26,12 +26,14 @@ setup(name='autobskan',
           'Programming Language :: Python :: 3 :: Only',
           'Programming Language :: Python :: 3.6',
           'Programming Language :: Python :: 3.7',
-          'Programming Language :: Python :: 3.8'
+          'Programming Language :: Python :: 3.8',
+          'Programming Language :: Python :: 3.9'
           ],
       install_requires=['numpy', 'scipy', 'ase', 'matplotlib',
-                        'Pillow', 'autobskan'],
+                        'Pillow', 'tqdm', 'autobskan'],
       entry_points = {'console_scripts' : [
       'autobskan = autobskan.main:main',
+      'autobskan-gui = autobskan.gui.frontend:main',
       'autobskan-post = autobskan.cli.post_processing_cli:main',
       'autobskan-collect = autobskan.cli.file_collector:main']}
       )

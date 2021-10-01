@@ -5,15 +5,16 @@
 ## ------------------------------------------------------------ ##
 ##################################################################
 
+from tqdm import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
-import os
+import os, copy
 from ase.geometry.cell import cell_to_cellpar as ctc
 from ase.build import sort
-from  autobskan.image import AR
+from autobskan.image import AR
 from ase.io.vasp import read_vasp, write_vasp
 from ase.build import make_supercell
-
+from scipy.interpolate import interp1d, CubicSpline
 
 def gy_norm(X, norm_factor=0, min_val=0, max_val=1):
     '''
@@ -32,7 +33,7 @@ class Surf:
     def __init__(self, model, al_dir = 2, al_tol = 0.5):
         if isinstance(model, str):
             model = read_vasp(model)
-        model = model.copy() #protect original model
+        model = model.copy()  #protect original model
         model.set_constraint(None)
         model.set_tags(None)
 
@@ -67,12 +68,12 @@ class Current:
             # Selective Dynamics & Coord_Type
             what1=f.readline().strip()
             if what1.upper().startswith("S"):
-                selective=True
+                selective = True
                 what2=f.readline().strip()
                 if what2.upper().startswith("D"):
-                    cartesian=False
+                    cartesian = False
                 else:
-                    cartesian=True
+                    cartesian = True
             else:
                 selective = False
                 if what1.upper().startswith("D"):
@@ -133,7 +134,88 @@ class Current:
             self.iso_min     = np.max(cur_3d[nz - 1, :, :])
 
 
-def seek_z(cur_z, incur, real = False):
+def seek_z_surface(cur_3d, isosurface, real = False, constant_current=True, interpolate="exponential"):
+    '''
+    [input]
+    * cur_3d : np.array(shape=(nz, ny, nx)), which is whole current data
+    * isosurface : wanted isosurface values
+      |___ input this after selecting the possible range of insosurface values.
+    * real : if you want the real relative heights from z1 in Angstrom. else, index value will be used
+      |___ for the image generations, it doesn't matter.
+    * constant_current : Constant current mode if True, else constant height mode will be selected
+
+    [output]
+    surface(2d data) of z values
+    '''
+    if constant_current:
+        # Return the matrix of height (Angstrom if real, else index)
+        if isosurface >= np.min(cur_3d[0]): # Minimum of maximum isosurfaces
+            raise IOError(f"Isosurface should be less than {np.max(cur_3d)}")
+        elif isosurface <= np.max(cur_3d[-1]): # Maximum of minimum isosurfaces
+            raise IOError(f"Isosurface should be larger than {np.min(cur_3d)}")
+        else:
+            pass
+
+        i_low = np.argmin(cur_3d > isosurface, axis=0) - 1
+        # In case of multiple occurences of the minimum values when using np.argmin,
+        # corresponding to the first occurence are returned. That's why we can just use the argmin here.
+
+        indices = np.indices(i_low.shape)
+
+        if interpolate=="exponential":
+            lower = np.log(cur_3d[i_low,indices[0],indices[1]])
+            upper = np.log(cur_3d[i_low+1,indices[0],indices[1]])
+            b = lower - upper # Always posivite
+            z_index = (i_low+1) - (np.log(isosurface) - upper)/b
+        elif interpolate=="linear":
+            lower = cur_3d[i_low, indices[0], indices[1]]
+            upper = cur_3d[i_low+1, indices[0], indices[1]]
+            b = lower - upper
+            z_index = (i_low+1) - (np.abs(upper-isosurface))/(np.abs(b))
+        elif interpolate=="cubic":
+            cs = CubicSpline(range(len(cur_3d)), cur_3d, axis=0, extrapolate=False)
+            z_index = cs.solve(isosurface) # But it takes quite a long time..!
+            z_index = np.array(z_index)
+            z_index = np.array([ele[-1] for ele in z_index.flatten()]).reshape(z_index.shape)
+        else:
+            raise NotImplementedError(f"{interpolate} method is not implemented. Available: exponential, linear, cubic")
+
+        if not real:
+            return z_index
+        else:
+            return z_index * 0.0529177 + 0.5 # distance from topmost z (Angstrom)
+
+    else:
+        # constant height mode: return the matrix of current
+        if isosurface > len(cur_3d) * 0.0529177 + 0.5:
+            raise IOError(f"The height should be less than {len(cur_3d) * 0.0529177 + 0.5}")
+        elif isosurface < 0.5:
+            raise IOError(f"The height should be higher than 0.5 Angstrom")
+        else:
+            pass
+
+        if not real:
+            z_index = isosurface
+        else:
+            z_index = (isosurface-0.5) / 0.0529177
+
+        i_low = np.floor(z_index)
+        if interpolate=="exponential":
+            lower = np.log(cur_3d[i_low])
+            upper = np.log(cur_3d[i_low+1])
+            b = lower - upper
+            return np.exp(b * z_index - (i_low+1) + upper)
+        elif interpolate=="cubic":
+            cs = CubicSpline(range(len(cur_3d)), cur_3d, axis=0, extrapolate=False)
+            return cs(z_index)
+        elif interpolate=="linear":
+            lin = interp1d([i_low, i_low+1], (cur_3d[i_low], cur_3d[i_low+1]), axis=0)
+            return lin(z_index)
+        else:
+            raise NotImplementedError(f"{interpolate} method is not implemented. Available: exponential, linear, cubic")
+
+
+def deprecated_seek_z(cur_z, incur, real = False):
     '''
     * cur_z : np.array(shape=(nz,)), current values along Z axis
       |___ input this after selecting x, y coordinate.
@@ -141,10 +223,10 @@ def seek_z(cur_z, incur, real = False):
 
     * incur : wanted isosurface values
       |___ input this after selecting the possible range of insosurface values.
-    
+
     * real : if you want the real relative height from z1 in Angstrom, we will calculate z_real = z_index * 0.0529177
       |___ for the image generations, it doesn't matter.
-      |___ And increments of z is 0.0529177, which has been used in all BSKAN calculations.      
+      |___ And increments of z is 0.0529177, which has been used in all BSKAN calculations.
       |___ But for now, absolute z value from topmost surface is unclear... (Need to be updated)
           ---> 어디가 시작점이고 어디가 종점인지는 잘 모르겠다. 0.5A부터 시작해서 5.7918 (0.5+5.2918)A 까지인가?
           ---> CURRENT의 z vector가 주어져 있으니, 원자 위치를 대조하여 z방향의 절댓값으로 활용하면 될 것 같다!!
@@ -153,7 +235,7 @@ def seek_z(cur_z, incur, real = False):
         #if cur_z has incur value, we don't need interpolation
         z_index = int(np.where(cur_z == incur)[0])
     else:
-        i_low = len(cur_z[(cur_z-incur)>0]) - 1
+        i_low = len(cur_z[(cur_z-incur)>0]) - 1 # Since the current increases when z decreases
         i_high = i_low + 1
         b = (np.log(cur_z[i_low])-np.log(cur_z[i_high]))
         z_index = i_high - (np.log(incur)-np.log(cur_z[i_high]))/b
@@ -162,11 +244,10 @@ def seek_z(cur_z, incur, real = False):
     else:
         return z_index * 0.0529177
 
-
-def seek_z_surface(current, incur, real = False):
+def deprecated_seek_z_surface(cur_3d, incur, real = False):
     '''
     [input]
-    * cur : np.array(shape=(nz, ny, nx)), which is whole current data
+    * cur_3d : np.array(shape=(nz, ny, nx)), which is whole current data
     * incur : wanted isosurface values
       |___ input this after selecting the possible range of insosurface values.
     * real : if you want the real relative heights from z1 in Angstrom. else, index value will be used
@@ -175,12 +256,13 @@ def seek_z_surface(current, incur, real = False):
     [output]
     surface(2d data) of z values
     '''
-    ny, nx = current.shape[1:]
+    ny, nx = cur_3d.shape[1:]
     surface = np.zeros((ny, nx))
     for i in range(ny):
         for j in range(nx):
-            surface[i][j] = seek_z(current[:,i,j], incur, real = real)
+            surface[i][j] = deprecated_seek_z(cur_3d[:, i, j], incur, real = real)
     return surface
+
 
 # plot guide atoms
 def vasp_to_bskan(str_vasp, current):
@@ -230,19 +312,24 @@ def vasp_to_bskan(str_vasp, current):
 
 
 #----------------------------------------------------------------------------------------------------------------------------
-def main(current, bskan_input, image_dir='.'):
+def main(current, bskan_input, image_dir='.', return_stm_fig=False, return_atomplot_fig=False):
     '''
     * current : Current instance
     * bskan_input : Bskan_input instance (in input.py)
     * image_dir : where to store the images
     '''
-    os.chdir(image_dir)
-    if not os.path.exists("plot_guide_atoms"):
-        os.makedirs("plot_guide_atoms")
-    for iso in bskan_input.iso:
-        print(iso)
+    if not return_stm_fig:
+        os.chdir(image_dir)
+    else:
+        figs_for_return = []
+
+    for iso in tqdm(bskan_input.iso):
         real_x, real_y = current.cellpar[:2]
-        z_surface      = seek_z_surface(current.cur_3d, iso)
+        try:
+            z_surface      = seek_z_surface(current.cur_3d, iso)
+        except IOError:
+            print(f"{iso} is out of range")
+            continue
         brightness     = bskan_input.brightness
         resolution     = bskan_input.contour_resolution
         norm_factor    = bskan_input.contrast
@@ -251,14 +338,24 @@ def main(current, bskan_input, image_dir='.'):
         y = np.linspace(0, real_y, current.grids[1])
         X, Y = np.meshgrid(x, y)
 
+        if return_atomplot_fig or return_stm_fig:
+            figs_for_return.append([X, Y, z_surface])
+
         (brighter, darker) = (0, -brightness) if brightness < 0 else (brightness, 0)
-        plt.figure(figsize = (real_x, real_y))
-        plt.contourf(X, Y, gy_norm(z_surface, norm_factor = norm_factor), cmap = cmap, levels = np.linspace(0-brighter, 1+darker, int(resolution*(1+abs(brightness)))))
-        plt.axis("off")
-        plt.savefig(f"{iso}.png", dpi=150, bbox_inches='tight', pad_inches=0) #linear의 경우 결과는 똑같다!
+        ax = plt.figure(figsize = (real_x, real_y)).gca()
+        ax.contourf(X, Y,
+                    gy_norm(z_surface, norm_factor = norm_factor),
+                    cmap = cmap,
+                    levels = np.linspace(0-brighter, 1+darker, int(resolution*(1+abs(brightness)))))
+        ax.axis("off")
+        ax.set_aspect("equal")
+        if not return_stm_fig:
+            plt.savefig(f"{iso}.png", dpi=150, bbox_inches='tight', pad_inches=0)
+        else:
+            figs_for_return.append(copy.deepcopy(plt.gcf())) #TODO deepcopy 안해도 되나? 그리고 figure 받아야 하는 거 맞나?
         plt.close()
 
-        if bskan_input.poscar != None:
+        if bskan_input.poscar is not None:
             radius_type    = bskan_input.radius_type
             size_ratio     = bskan_input.size_ratio
             size_and_color = dict()
@@ -278,7 +375,7 @@ def main(current, bskan_input, image_dir='.'):
                     color = tuple(map(lambda x:float(x), (color_r, color_g, color_b)))
                     size_and_color[symbol] = (radius, color)
 
-            if bskan_input.atom_addinfo != None:
+            if bskan_input.atom_addinfo is not None:
                 # with open(bskan_input.atom_addinfo, 'r') as addinfo:
                 for line in bskan_input.atom_addinfo:
                     symbol, radius, c_r, c_g, c_b = line.split()
@@ -286,26 +383,42 @@ def main(current, bskan_input, image_dir='.'):
                     size_and_color[symbol] = (float(radius), color)
 
             str_bskan = vasp_to_bskan(bskan_input.poscar, current)[0]
-            write_vasp("bskan_structure.vasp", str_bskan, vasp5=True, direct=True, sort=True)
+            if not (return_atomplot_fig or return_stm_fig):
+                write_vasp("bskan_structure.vasp", str_bskan, vasp5=True, direct=True, sort=True)
             atom_species = np.array(AR.species(str_bskan.get_chemical_symbols(), overall=True))
             surf = Surf(str_bskan, al_tol = 0.5)
             surf = AR.to_new_cell(sort(surf.atoms, tags = surf.atoms.get_tags()))
             plot_layers = AR.species(surf.get_tags(), overall=True)[-1:-n_layers_for_plot-1:-1]
 
-            os.chdir("plot_guide_atoms")
-            plt.figure(figsize = (real_x, real_y))
-            plt.contourf(X, Y, gy_norm(z_surface, norm_factor = norm_factor), cmap = cmap, levels = np.linspace(0-brighter, 1+darker, int(resolution*(1+abs(brightness)))))
+            if not return_atomplot_fig:
+                if not os.path.isdir("plot_guide_atoms"):
+                    os.mkdir("plot_guide_atoms")
+                os.chdir("plot_guide_atoms")
+            ax = plt.figure(figsize = (real_x, real_y)).gca()
+            ax.contourf(X, Y,
+                        gy_norm(z_surface, norm_factor = norm_factor),
+                        cmap = cmap,
+                        levels = np.linspace(0-brighter, 1+darker, int(resolution*(1+abs(brightness)))))
 
             for atom in surf:
                 if atom.tag in plot_layers:
                     size, color_temp = size_and_color[atom.symbol]
                     plot_coord = atom.position
-                    plt.plot(plot_coord[0], plot_coord[1], color=color_temp, marker=".", ms=size_ratio*size)
-            plt.axis("off")
-            plt.savefig(f"{iso}_guide.png", dpi=150, bbox_inches='tight', pad_inches=0)
+                    ax.plot(plot_coord[0], plot_coord[1], color=color_temp, marker=".", ms=size_ratio*size)
+            ax.axis("off")
+            ax.set_aspect("equal")
+
+            if not return_atomplot_fig:
+                plt.savefig(f"{iso}_guide.png", dpi=150, bbox_inches='tight', pad_inches=0)
+                os.chdir("../")
+            else:
+                figs_for_return.append(copy.deepcopy(plt.gcf()))  # TODO deepcopy 안해도 되나? 그리고 figure 받아야 하는 거 맞나?
             plt.close()
-            os.chdir("../")
-    os.chdir("../")
+
+    if not (return_atomplot_fig or return_stm_fig):
+        os.chdir("../")
+    else:
+        return figs_for_return
 
 
 

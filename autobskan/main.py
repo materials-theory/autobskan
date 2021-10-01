@@ -1,20 +1,19 @@
 # coding: utf-8
 
-__author__ = "Giyeok Lee"
+__author__ = "Giyeok Lee", "Inu Kim"
 __email__ = "lgy4230@yonsei.ac.kr"
-__date__ = "Oct 11, 2020"
+__date__ = "Oct 08, 2021"
 __maintainer__ = "Giyeok Lee"
-__version__ = "1.1.4"
-__copyright__ = "Copyright (c) Materials Theory Group @ Yonsei University (2020)"
+__version__ = "1.0.0"
+__copyright__ = "Copyright (c) Materials Theory Group @ Yonsei University (2021)"
 
 
 import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
 from numpy import pi, sin, cos, sqrt
-import os
+import os, glob, copy
 import scipy.ndimage as ndimage
-import glob
 from ase.io.vasp import read_vasp, write_vasp
 
 import autobskan.input.input
@@ -24,15 +23,16 @@ def main():
 	if os.path.exists("bskan.in"):
 		bskan_input = autobskan.input.input.Bskan_input("bskan.in")
 	else:
-		# Using argparse!!!
-		raise IOError("Not yet... plz use bskan.in")
+		# Using argparse can be another options.. But it could be somewhat messy in that case
+		raise IOError("plz make bskan.in file for CLI, or autobskan-gui command for GUI")
 
 	try:
 		str_vasp = read_vasp(bskan_input.poscar)
 		bskan_input.poscar = str_vasp
-		bskan_input.gamma = str_vasp.get_cell_lengths_and_angles()[-1]
+		bskan_input.gamma = str_vasp.cell.cellpar()[-1]
 	except:
-		raise IOError("wrong input structure")
+		# raise IOError("wrong input structure")
+		print("No input structures. Gamma will be selected as you set. Default=90")
 
 	if bskan_input.atom_addinfo != None:
 		with open(bskan_input.atom_addinfo, 'r') as addinfo:
@@ -56,9 +56,13 @@ def main():
 			# Automatic selection of ISOSURFACE values
 			if bskan_input.iso_auto == "LOGSCALE":
 				iso_max, iso_min = np.floor(np.log10(current.iso_max)), np.ceil(np.log10(current.iso_min))
-				bskan_input.iso = 10 ** np.arange(iso_min, iso_max)
+				bskan_input.iso = 10 ** np.arange(iso_min, iso_max+1)
 			elif bskan_input.iso_auto:
-				bskan_input.iso = list(np.linspace(current.iso_max, current.iso_min, bskan_input.iso))
+				try:
+					if not isinstance(bskan_input.iso, list):
+						bskan_input.iso = list(np.linspace(current.iso_max, current.iso_min, int(bskan_input.iso)))
+				except:
+					raise IOError("wrong input of ISO in bskan.in")
 			else: # ISO_AUTO = FALSE
 				pass
 

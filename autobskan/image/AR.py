@@ -98,7 +98,7 @@ def car2dir(coord, cell_vec):
   
 def to_new_cell(model, decimals = 13):
     new_cell = np.zeros((3,3))
-    a, b, c, alpha, beta, gamma = model.get_cell_lengths_and_angles()
+    a, b, c, alpha, beta, gamma = model.cell.cellpar()
     alpha, beta, gamma = np.array([alpha, beta, gamma]) * np.pi / 180
     new_cell[0,0] = a
     new_cell[1] = b * cos(gamma), b * sin(gamma), 0

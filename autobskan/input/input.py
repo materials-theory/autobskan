@@ -1,5 +1,5 @@
 import numpy as np
-import os
+import os, copy
 
 # Defining bskan_input class.
 def raw_input(bskan_in='bskan.in'):
@@ -200,7 +200,7 @@ class Bskan_input:
             if "EXT" in self.options:
                 self.ext = self.options["EXT"]
             if "POSCAR" in self.options:
-                self.poscar = self.options["POSCAR"]                
+                self.poscar = self.options["POSCAR"]
             if "ATOM_ADDINFO" in self.options:
                 self.atom_addinfo = self.options["ATOM_ADDINFO"]                
             if "LAYERS" in self.options:
@@ -231,6 +231,9 @@ class Bskan_input:
             if "BLUR_SIGMA" in self.options:
                 self.blur_sigma = self.options["BLUR_SIGMA"]
 
+    def export(self):
+        # TODO: for GUI to CLI
+        pass
 
 
 def main(input_file='bskan.in'):
