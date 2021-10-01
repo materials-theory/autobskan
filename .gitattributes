@@ -5,7 +5,5 @@
 *.ini linguist-detectable=false
 .DS_Store linguist-detectable=false
 
-
-*.rst linguist-vendored
 test/* linguist-vendored
 examples/* linguist-vendored
