@@ -5,7 +5,7 @@ MODE = Image
 # BSKAN = command of excuting BSKAN binary (ex. mpirun -np 8 ~/programs/VASP/norm_std.x > stdout.log)
 # METHOD = TH / CHEN / BARDEEN
 # you can also write th/ch/ba
-# BAIS = start_end_steps&value
+# BIAS = start_end_steps&value
 # |
 # |___1) If you put separator "_", such as -0.01_0.01_0.02 this case,
 #	   it is regarded as MIN MAX INCREMENTS to make list. So result will be [-0.01, 0.01] in this example.
@@ -16,14 +16,14 @@ MODE = Image
 
 
 # (2) Image Parts
-CURRENT = CURRENT_29_-1.0
-ISO_AUTO = LOG
-CMAP = afmhot
-CONTRAST = 0.2
-BRIGHTNESS  = -0.3
-POSCAR = 29-structure.vasp
-LAYERS = 1
+CURRENT = CURRENT_29_-1.0  # bskan output, we can use regular expressions
+ISO_AUTO = LOG             # automatic selection of isosurface values
+CMAP = afmhot              # colormap setting (matplotlib)
+CONTRAST = 0.2             # increase contrast
+BRIGHTNESS  = -0.3         # decrease the brightness
+POSCAR = 29-structure.vasp # structure file(POSCAR) for both iteration and plotting atoms
+LAYERS = 1                 # plot the outmost layer on generated images
 
 # (3)) Postprocessing Parts
-POST_PROCESSING = False
-#ITERATION = 2, 2
+POST_PROCESSING = True     # turn on post_processing (iteration, blurring) or not
+ITERATION = 2, 2           # 
