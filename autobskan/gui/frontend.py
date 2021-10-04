@@ -3,7 +3,7 @@ import numpy as np
 import tkinter as tk
 import tkinter.ttk as ttk
 from tkinter import filedialog
-from tkinter import PhotoImage
+# from tkinter import PhotoImage
 
 import matplotlib
 matplotlib.use('TkAgg')
@@ -18,11 +18,10 @@ from autobskan.image import stmplot, post_processing, AR
 
 
 def main():
-    global fig1, fig2, fig3, current, bskan_input
-    global iso_min
-    global iso_max
-    global iso_recommended
-    global showatoms, showunitcell, showcursor
+    global fig, fig2, fig3, current, bskan_input
+    global iso_min, iso_max, iso_recommended
+    global showatoms, showrepeat, showblur, showunitcell, showcursor
+    global max_nlayer, surf
 
     main_window = tk.Tk()
     main_window.title("autobskan GUI")
@@ -30,12 +29,17 @@ def main():
     main_window.resizable(True, True)
 
     # For visualization
-    fig1 = plt.figure(figsize=(5, 5))
-    fig2 = plt.figure(figsize=(5, 5))
-    fig3 = plt.figure(figsize=(5, 5))
+    fig = plt.figure(figsize=(6, 6))
+
+    iso_min, iso_max = 1e1, 1e10 # Just default value
+    iso_recommended = 0 # logarithm 에서 제일 작은 것 중 2번째로 정하자
+    max_nlayer = 5
+    surf = None
 
     # View options
     showatoms = tk.BooleanVar()
+    showrepeat = tk.BooleanVar()
+    showblur = tk.BooleanVar()
     showunitcell = tk.BooleanVar()
     showcursor = tk.BooleanVar()
 
@@ -43,46 +47,27 @@ def main():
     current = None
 
     def update_image():
-        # global showatoms
-        # global current
         if current is not None:
             real_x, real_y = current.cellpar[:2]
-            er = 5/np.max([real_x, real_y])
-            fig1.set_size_inches(er * real_x, er * real_y, forward=True)
-            fig2.set_size_inches(er * real_x, er * real_y, forward=True)
-            fig3.set_size_inches(er * real_x, er * real_y, forward=True)
+            if showrepeat.get():
+                nx, ny = bskan_input.iteration
+                real_x *= nx
+                real_y *= ny
+            er = 6/np.max([real_x, real_y])
+            fig.set_size_inches(er * real_x, er * real_y, forward=True)
+            canvas.width = er * real_x
+            canvas.height = er * real_y
 
-        ax1 = fig1.gca()
-        ax1.clear()
-
-        if showatoms.get():
-            ax2 = fig2.gca()
-            ax2.clear()
-        else:
-            ax2 = None
-
-        # TODO showblur도 Varible로 만들어서 조지기
-        # if showblur:
-        #     ax3 = fig3.gca()
-        #     ax3.clear()
-        # else:
-        #     ax3 = None
+        ax = fig.gca()
+        ax.clear()
 
         if current is not None:
-            print(showatoms.get())
-            stmplot.main(current, bskan_input, save=False,
-                         ax_stm = ax1, plot_atoms = showatoms.get())
-        canvas1.draw()
-
-    iso_min, iso_max = 1e1, 1e10 # Just default value
-    iso_recommended = 0 # logarithm 에서 제일 작은 것 중 2번째로 정하자
-    max_nlayer = 5
-    surf = None
+            stmplot.main(current, bskan_input, save=False, ax_stm = ax,
+                         plot_atoms = showatoms.get(), plot_repeat=showrepeat.get(), blur=showblur.get())
+            canvas.draw()
 
     def open_cur_file():
-        global iso_min
-        global iso_max
-        global iso_recommended
+        global iso_min, iso_max, iso_recommended
         global current
 
         curfile.delete(0, tk.END)
@@ -99,6 +84,8 @@ def main():
             iso_recommended = logiso[0]
         iso_scale.config(from_=np.ceil(np.log10(iso_min)), to=np.floor(np.log10(iso_max)), resolution=0.5)
         isosurface.config(from_=np.ceil(np.log10(iso_min)), to=np.floor(np.log10(iso_max)), increment=0.5)
+        iso_cmd(iso_recommended, update=False)
+        iso_cmd2(None, update=True)
 
         bskan_input.current = curfile.get()
         update_image()
@@ -109,8 +96,7 @@ def main():
         update_poscar()
 
     def update_poscar(event=None):
-        global max_nlayer
-        # global surf
+        global max_nlayer, surf
 
         filename = strfile.get()
         bskan_input.poscar = read_vasp(filename)
@@ -119,6 +105,8 @@ def main():
         manual_gamma.insert(0, f"{bskan_input.gamma:.3f}")
         surf = stmplot.Surf(bskan_input.poscar)
         max_nlayer = np.max(surf.atoms.get_tags())
+        nlayer.config(to=max_nlayer)
+        nlayer_scale.config(to=max_nlayer)
         update_image()
 
     def update_gamma(event=None, update=True):
@@ -137,32 +125,19 @@ def main():
     # image_frame.pack(side="left", fill="y", expand=True)
     image_frame.grid(row=0, column=0, padx=10, pady=10, sticky="news")
 
-    img1_lbl = ttk.Label(image_frame, text="Unit cell")
-    img1_lbl.pack(side="top", fill="x", expand=True)
-    # img1:
-    img1 = ttk.Frame(image_frame)
-    img1.pack(side="top", fill="x", expand=True)
-    canvas1 = FigureCanvasTkAgg(fig1, master=img1)
-    canvas1.draw()
-    canvas1.get_tk_widget().pack(side="top", fill="x", expand=True)
+    img_lbl = ttk.Label(image_frame, text="Unit cell")
+    img_lbl.pack(side="top", fill="x", expand=True)
 
-    sep1 = ttk.Separator(image_frame)
-    sep1.pack(side="top", fill="x", expand=True)
+    # input image
+    img = ttk.Frame(image_frame)
+    img.pack(side="top", fill="x", expand=True)
 
-    # img2: Atom plot
-    img2_lbl = ttk.Label(image_frame, text="Repeated image (nx, ny)")
-    img2_lbl.pack(side="top", fill="x", expand=True)
-    img2 = ttk.Frame(image_frame)
-    img2.pack(side="top", fill="x", expand=True)
+    canvas = FigureCanvasTkAgg(fig, master=img)
+    canvas.draw()
+    canvas.get_tk_widget().pack(side="top", fill="x", expand=True)
 
-
-    sep2 = ttk.Separator(image_frame)
-    sep2.pack(side="top", fill="x", expand=True)
-
-    img3_lbl = ttk.Label(image_frame, text="Blurred image")
-    img3_lbl.pack(side="top", fill="x", expand=True)
-    # img3
-
+    # sep1 = ttk.Separator(image_frame)
+    # sep1.pack(side="top", fill="x", expand=True)
 
     ####### 2. FILE inputs
     file_frame = ttk.Frame(main_window)
@@ -185,8 +160,10 @@ def main():
                             width=2, height=1, command=open_str_file)
     strfile_btn.pack(side="right", fill="both", expand=True)
 
-    manual_gamma = ttk.Entry(file_frame)
-    manual_gamma.grid(row=2, column=0, padx=10, pady=10, sticky="news")
+    display_gamma = ttk.LabelFrame(file_frame, text="Lattice parameter, Gamma (deg)")
+    display_gamma.grid(row=2, column=0, padx=10, pady=10, sticky="news")
+    manual_gamma = ttk.Entry(display_gamma)
+    manual_gamma.pack(side="left", fill="both", expand=True)
     manual_gamma.bind("<Return>", update_gamma)
 
 
@@ -204,72 +181,104 @@ def main():
     toggle_frame = ttk.LabelFrame(file_frame, text="View options")
     toggle_frame.grid(row=4, column=0, sticky="news", pady=20)
 
+    def rp_cmd(event=None, update=True):
+        bskan_input.iteration = list(map(lambda x:int(x), repeat.get().split(",")))
+        if showrepeat.get():
+            img_lbl.config(text=f"Repeated image ({repeat.get()})")
+        else:
+            img_lbl.config(text="Unit cell")
+        if update:
+            update_image()
+
     check_showatoms = tk.Checkbutton(toggle_frame, text="Show atoms",
                                      variable=showatoms, anchor="w", command=update_image)
     check_showatoms.pack(side="top", fill="both", expand=True)
+
+    check_showrepeat = tk.Checkbutton(toggle_frame, text="Show repeated image",
+                                        variable=showrepeat, anchor="w", command=rp_cmd)
+    check_showrepeat.pack(side="top", fill="both", expand=True)
+
+    check_showblur = tk.Checkbutton(toggle_frame, text="Show gaussian blurred image",
+                                        variable=showblur, anchor="w", command=update_image)
+    check_showblur.pack(side="top", fill="both", expand=True)
+
     check_showunitcell = tk.Checkbutton(toggle_frame, text="Show unit cell",
                                         variable=showunitcell, anchor="w", command=update_image)
+
     check_showunitcell.pack(side="top", fill="both", expand=True)
+
     check_showcursor = tk.Checkbutton(toggle_frame, text="Show cursor",
                                       variable = showcursor, anchor="w", command=update_image)
     check_showcursor.pack(side="top", fill="both", expand=True)
 
     check_showatoms.select()
+    check_showrepeat.deselect()
+    check_showblur.deselect()
     check_showunitcell.select()
     check_showcursor.select()
-    # check_showcursor.state(["selected"]) # ttk 썼을 때는 어떻게 select?
+    # check_showcursor.state(["selected"]) # How to select in ttk.Checkbutton?
 
-    def rp_cmd(event):
-        img2_lbl.config(text=f"Repeated image ({repeat.get()})")
     repeat_lbl = ttk.LabelFrame(file_frame, text="Repeat (x, y)")
     repeat_lbl.grid(row=5, column=0, sticky="news", pady=20)
     repeat = ttk.Entry(repeat_lbl)
     repeat.pack()
     repeat.delete(0, tk.END)
     repeat.insert(0, '2, 2')
-    img2_lbl.config(text=f"Repeated image ({repeat.get()})")
+    rp_cmd()
     repeat.bind("<Return>", rp_cmd)
 
     def return_to_default():
-        global iso_min
-        global iso_max
-        global iso_recommended
-
         cmap.set("afmhot")
         update_cmap(update=False)
         repeat.delete(0, tk.END)
         repeat.insert(0, '2, 2')
-        rp_cmd(0)
+        rp_cmd(0, update=False)
+
         check_showatoms.select()
         check_showunitcell.select()
+        check_showrepeat.deselect()
+        check_showblur.deselect()
         check_showcursor.select()
+
         brightness.delete(0, tk.END)
         brightness.insert(0, 0.0)
         br_cmd2(update=False)
+
         contrast.delete(0, tk.END)
         contrast.insert(0, 0.0)
         cont_cmd2(update=False)
+
         isosurface.delete(0, tk.END)
         isosurface.insert(0, iso_recommended)
         iso_cmd2(update=False)
+
         gaus_sigma.delete(0, tk.END)
-        gaus_sigma.insert(0, 10)
-        gaus_cmd2()
+        gaus_sigma.insert(0, 5)
+        gaus_cmd2(update=False)
+
         nlayer.delete(0, tk.END)
         nlayer.insert(0, 1)
         nlayer_cmd2(update=False)
+
         ratom.delete(0, tk.END)
-        ratom.insert(0, 60)
+        ratom.insert(0, 30)
         ratom_cmd2(update=False)
-        update_image()
-        # TODO update post-processed images
+
+        update_image() # update image at once
+
+    def save_figure_as(event=None):
+        # TODO 저장하기. 나도코딩 보면 될 듯
+        pass
+
+    save_figure = ttk.Button(file_frame, text="SAVE IMAGE",
+                             command = save_figure_as)
+    save_figure.grid(row=6, column=0, sticky="news", pady=20)
 
     set_as_default = ttk.Button(file_frame, text="SET AS DEFAULT",
                                 command = return_to_default)
-    set_as_default.grid(row=5, column=0, sticky="news", pady=20)
+    set_as_default.grid(row=7, column=0, sticky="news", pady=20)
 
-
-    # variable 확인해 봄. 잘 되는구만
+    # Checknig variables
     # def tempprt():
     #     print(showatoms.get(), showunitcell.get(), showcursor.get())
     # temp_prtbtn = tk.Button(toggle_frame, text="print", command=tempprt)
@@ -303,7 +312,6 @@ def main():
     # brightness = ttk.Entry(br_label)
     brightness = ttk.Spinbox(br_label, from_=-1, to=1, increment=0.05,
                              command = br_cmd2)
-    # brightness.bind("<Return>", br_cmd3)
     brightness.bind("<Return>", br_cmd2)
     brightness.delete(0, tk.END)
     brightness.insert(0, 0.0)
@@ -358,7 +366,6 @@ def main():
     iso_label = ttk.LabelFrame(opt_frame, text="log10(Isosurface)")
     iso_label.pack(side="top", fill="x", expand=True)
     iso_var = tk.DoubleVar()
-    print(iso_min, iso_max)
     iso_scale = tk.Scale(iso_label, variable=iso_var, orient=tk.HORIZONTAL,
                          from_=np.ceil(np.log10(iso_min)), to=np.floor(np.log10(iso_max)),
                          resolution=0.5, command = iso_cmd, showvalue=False)
@@ -370,36 +377,6 @@ def main():
     isosurface.insert(0, iso_recommended)
     iso_cmd2()
     isosurface.pack(fill="x", expand=True)
-
-
-    def gaus_cmd(value):
-        gaus_sigma.delete(0, tk.END)
-        gaus_sigma.insert(0, value)
-        bskan_input.blur_sigma = float(value)
-        # TODO
-        # update post-processed images
-
-    def gaus_cmd2(event=None):
-        gaus_scale.set(gaus_sigma.get())
-        bskan_input.blur_sigma = float(gaus_sigma.get())
-        # TODO
-        # update post-processed images
-
-    gaus_label = ttk.LabelFrame(opt_frame, text="Gaussian Blurring sigma")
-    gaus_label.pack(side="top", fill="x", expand=True)
-    gaus_var = tk.DoubleVar()
-    gaus_scale = tk.Scale(gaus_label, variable=gaus_var, orient=tk.HORIZONTAL,
-                          from_=0, to=1000, resolution=5, command = gaus_cmd,
-                          showvalue=False)
-    gaus_scale.pack(side="bottom", fill="x", expand=True)
-    gaus_sigma = ttk.Spinbox(gaus_label, from_=0, to=1000, increment=5,
-                             command = gaus_cmd2)
-    gaus_sigma.bind("<Return>", gaus_cmd2)
-    gaus_sigma.delete(0, tk.END)
-    gaus_sigma.insert(0, 10)
-    gaus_cmd2()
-    gaus_sigma.pack(fill="x", expand=True)
-
 
     def nlayer_cmd(value, update=True):
         nlayer.delete(0, tk.END)
@@ -446,16 +423,45 @@ def main():
     ratom_label.pack(side="top", fill="x", expand=True)
     ratom_var = tk.DoubleVar()
     ratom_scale = tk.Scale(ratom_label, variable=ratom_var, orient=tk.HORIZONTAL,
-                           from_=0, to=500, resolution=10, command = ratom_cmd,
+                           from_=0, to=100, resolution=5, command = ratom_cmd,
                            showvalue=False)
     ratom_scale.pack(side="bottom", fill="x", expand=True)
-    ratom = ttk.Spinbox(ratom_label, from_=0, to=500, increment=10,
+    ratom = ttk.Spinbox(ratom_label, from_=0, to=100, increment=5,
                         command = ratom_cmd2)
     ratom.bind("<Return>", ratom_cmd2)
     ratom.delete(0, tk.END)
-    ratom.insert(0, 60)
+    ratom.insert(0, 30)
     ratom_cmd2()
     ratom.pack(fill="x", expand=True)
+
+
+    def gaus_cmd(value, update=True):
+        gaus_sigma.delete(0, tk.END)
+        gaus_sigma.insert(0, value)
+        bskan_input.blur_sigma = float(value)
+        if update:
+            update_image()
+
+    def gaus_cmd2(event=None, update=True):
+        gaus_scale.set(gaus_sigma.get())
+        bskan_input.blur_sigma = float(gaus_sigma.get())
+        if update:
+            update_image()
+
+    gaus_label = ttk.LabelFrame(opt_frame, text="Gaussian Blurring sigma")
+    gaus_label.pack(side="top", fill="x", expand=True)
+    gaus_var = tk.DoubleVar()
+    gaus_scale = tk.Scale(gaus_label, variable=gaus_var, orient=tk.HORIZONTAL,
+                          from_=0, to=100, resolution=1, command = gaus_cmd,
+                          showvalue=False)
+    gaus_scale.pack(side="bottom", fill="x", expand=True)
+    gaus_sigma = ttk.Spinbox(gaus_label, from_=0, to=100, increment=1,
+                             command = gaus_cmd2)
+    gaus_sigma.bind("<Return>", gaus_cmd2)
+    gaus_sigma.delete(0, tk.END)
+    gaus_sigma.insert(0, 5)
+    gaus_cmd2()
+    gaus_sigma.pack(fill="x", expand=True)
 
 
     # Menu

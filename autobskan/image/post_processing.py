@@ -3,7 +3,6 @@
 import scipy.ndimage as ndimage
 import matplotlib.pyplot as plt
 import numpy as np
-from numpy import pi, sin, cos
 import os
 import glob
 from PIL import Image
@@ -15,11 +14,11 @@ def image_iter(file, x, y, gamma, name, savedir="generated_iter"):
     size_x, size_y = im.size
     if np.round(gamma, 4) in [60., 120.]:
         gamma = 90
-    G=gamma*pi/180
-    s_g, c_g = sin(G), cos(G)
+    G=np.radians(gamma)
+    s_g, c_g = np.sin(G), np.cos(G)
 
     # when gamma=90, x_cut=0
-    x_cut = int(round(size_y*c_g/s_g,0))
+    x_cut = int(round(size_y*c_g/s_g, 0))
     new_image = Image.new("RGBA", (size_x * x, size_y * y), (255, 255, 255, 0))
 
     if x_cut==0:
@@ -40,6 +39,43 @@ def image_iter(file, x, y, gamma, name, savedir="generated_iter"):
     new_image.save(f"{savedir}/{name}_{x}x{y}.png", "PNG")
     return f"{savedir}/{name}_{x}x{y}.png"
 
+
+def array_iter(Z, nx = 2, ny = 2, gamma=90, real_x = None, real_y = None):
+
+    size_y, size_x = Z.shape
+    Z = Z[:-1, :-1] # Remove duplicated values.. Z[real_x] == Z[0]
+    if np.round(gamma, 4) in [60., 120.]:
+        gamma = 90
+    G = np.radians(gamma)
+    s_g, c_g = np.sin(G), np.cos(G)
+
+    # when gamma=90, x_cut = 0
+    x_cut = int(np.round(size_y*c_g/s_g, 0))
+
+    Z_result = np.hstack([Z] * nx)
+    for i in range(1, ny):
+        if x_cut != 0:
+            attach = np.roll(Z, axis=1, shift=x_cut*i)
+        else:
+            attach = Z
+        attach = np.hstack([attach] * nx)
+        Z_result = np.vstack((Z_result, attach))
+
+    if real_x is not None:
+        assert real_y is not None
+        X = np.linspace(0, real_x * nx, (size_x-1) * nx) # To remove duplicated Z[real_x] == Z[0]
+        Y = np.linspace(0, real_y * ny, (size_y-1) * ny)
+
+        # X, Y = [], []
+        # for i in range(nx):
+        #     X += list(np.linspace(0+real_x*i, real_x*(i+1), size_x))
+        # for j in range(ny):
+        #     Y += list(np.linspace(0+real_y*j, real_y*(j+1), size_y))
+        # X, Y = np.meshgrid(X, Y)
+
+        return X, Y, Z_result
+    else:
+        return Z_result
 
 # --------------------------------------------------------------------------------  [blurring] -> generate png and save it to generated_blur/ directory
 def image_blur(file, blur_sigma, name, savedir = "generated_blur"):

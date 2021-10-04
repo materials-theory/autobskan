@@ -10,12 +10,16 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import copy
+
 from ase.build import sort
-from autobskan.image import AR
 from ase.io.vasp import read_vasp, write_vasp
-from ase.cell import Cell
+from ase.geometry.cell import cell_to_cellpar as ctc
 from ase.build import make_supercell
+
 from scipy.interpolate import interp1d, CubicSpline
+import scipy.ndimage as ndimage
+
+from autobskan.image import AR, post_processing
 
 
 def gy_norm(X, norm_factor=0, min_val=0, max_val=1):
@@ -122,8 +126,9 @@ class Current:
 
             self.system_name = system_name
             self.lattice = lattice
-            self.cell = Cell(cell)
-            self.cellpar = Cell(cell).cellpar()
+            self.cell = cell
+            # self.cellpar = Cell(cell).cellpar()
+            self.cellpar = ctc(cell)
             self.natoms = natoms
             self.coord_type = coord_type
             self.coord = coord
@@ -294,7 +299,8 @@ def vasp_to_bskan(str_vasp, current):
     """
     if isinstance(str_vasp, str):
         str_vasp = read_vasp(str_vasp)
-    poscar_cellpar = str_vasp.get_cell_lengths_and_angles()
+    # poscar_cellpar = str_vasp.get_cell_lengths_and_angles() # deprecated from ASE
+    poscar_cellpar = str_vasp.cell.cellpar()
     if np.round(poscar_cellpar[-1], 4) in [60., 120.]:
         # sometimes... 119.99999999991849 degree arises
         ctype = "hexagonal"
@@ -329,11 +335,17 @@ def vasp_to_bskan(str_vasp, current):
 
 
 # ----------------------------------------------------------------------------------------------------------------------------
-def main(current, bskan_input, image_dir='.', save=True, ax_stm=None, plot_atoms=False):
+def main(current, bskan_input, image_dir='.', save=True, ax_stm=None,
+         plot_atoms = False, plot_repeat = False, blur = False):
     """
     * current : Current instance
     * bskan_input : Bskan_input instance (in input.py)
     * image_dir : where to store the images
+    * save : save file
+    * ax_stm : plot on already made matplotlib axes
+    * plot_atoms : plot atom positions
+    * plot_repeat : If True, plots repeated images based on bskan_input.iteration
+    * blur : If True, gaussian filter will be applied as bskan_input.blur_sigma
     """
     if save:
         os.chdir(image_dir)
@@ -344,7 +356,7 @@ def main(current, bskan_input, image_dir='.', save=True, ax_stm=None, plot_atoms
     for iso in data:
         real_x, real_y = current.cellpar[:2]
         try:
-            z_surface = seek_z_surface(current.cur_3d, iso)
+            Z = seek_z_surface(current.cur_3d, iso)
         except IOError:
             print(f"{iso} is out of range")
             continue
@@ -352,24 +364,32 @@ def main(current, bskan_input, image_dir='.', save=True, ax_stm=None, plot_atoms
         resolution = bskan_input.contour_resolution
         norm_factor = bskan_input.contrast
         cmap = bskan_input.cmap
-        x = np.linspace(0, real_x, current.grids[0])
-        y = np.linspace(0, real_y, current.grids[1])
-        X, Y = np.meshgrid(x, y)
+
+        if not plot_repeat:
+            # x = np.linspace(0, real_x, current.grids[0]+1)[:-1]
+            # y = np.linspace(0, real_y, current.grids[1]+1)[:-1]
+            x = np.linspace(0, real_x, current.grids[0])
+            y = np.linspace(0, real_y, current.grids[1])
+            X, Y = np.meshgrid(x, y)
+
+        else:
+            nx, ny = bskan_input.iteration
+            X, Y, Z = post_processing.array_iter(Z, nx = nx, ny = ny,
+                                                 gamma = bskan_input.gamma, real_x = real_x, real_y = real_y)
+
+        if blur:
+            Z = ndimage.gaussian_filter(Z, sigma=bskan_input.blur_sigma, order=0)
+            # Error occurs because of overlapping x and y coordinates.
 
         if not save:
-            data_to_return.append([X, Y, z_surface])
+            data_to_return.append([X, Y, Z])
 
         (brighter, darker) = (0, -brightness) if brightness < 0 else (brightness, 0)
 
         if ax_stm is None:
             ax_stm = plt.figure(figsize=(real_x, real_y)).gca()
-        else:
-            # TODO ax_stm의 figure size를 조절해야 할까?
-            pass
 
-        ax_stm.contourf(X, Y,
-                        gy_norm(z_surface, norm_factor=norm_factor),
-                        cmap=cmap,
+        ax_stm.contourf(X, Y, gy_norm(Z, norm_factor = norm_factor), cmap = cmap,
                         levels=np.linspace(0 - brighter, 1 + darker, int(resolution * (1 + abs(brightness)))))
         ax_stm.axis("off")
         ax_stm.set_aspect("equal")
@@ -409,6 +429,8 @@ def main(current, bskan_input, image_dir='.', save=True, ax_stm=None, plot_atoms
                 if save:
                     write_vasp("bskan_structure.vasp", str_bskan, vasp5=True, direct=True, sort=True)
                 # atom_species = np.array(AR.species(str_bskan.get_chemical_symbols(), overall=True))
+                if plot_repeat:
+                    str_bskan = make_supercell(str_bskan, np.diag((nx+1, ny+1, 1)))
                 surf = Surf(str_bskan, al_tol=0.5)
                 surf = AR.to_new_cell(sort(surf.atoms, tags=surf.atoms.get_tags()))
                 plot_layers = AR.species(surf.get_tags(), overall=True)[-1:-n_layers_for_plot - 1:-1]
@@ -418,9 +440,7 @@ def main(current, bskan_input, image_dir='.', save=True, ax_stm=None, plot_atoms
                         os.mkdir("plot_guide_atoms")
                     os.chdir("plot_guide_atoms")
                     ax_plot_atoms = plt.figure(figsize=(real_x, real_y)).gca()
-                    ax_plot_atoms.contourf(X, Y,
-                                           gy_norm(z_surface, norm_factor=norm_factor),
-                                           cmap=cmap,
+                    ax_plot_atoms.contourf(X, Y, gy_norm(Z, norm_factor=norm_factor), cmap = cmap,
                                            levels=np.linspace(0 - brighter, 1 + darker,
                                                               int(resolution * (1 + abs(brightness)))))
 
@@ -430,12 +450,19 @@ def main(current, bskan_input, image_dir='.', save=True, ax_stm=None, plot_atoms
                         plot_coord = atom.position
                         if save:
                             ax_plot_atoms.plot(plot_coord[0], plot_coord[1],
-                                               color=color_temp, marker=".", ms=size_ratio * size)
+                                               color = color_temp, marker = ".", ms = size_ratio * size)
                             ax_plot_atoms.axis("off")
                             ax_plot_atoms.set_aspect("equal")
                         else:
                             ax_stm.plot(plot_coord[0], plot_coord[1],
-                                        color=color_temp, marker=".", ms=size_ratio * size)
+                                        color = color_temp, marker = ".", ms = size_ratio * size)
+
+                if not plot_repeat:
+                    plt.xlim(0, real_x)
+                    plt.ylim(0, real_y)
+                else:
+                    plt.xlim(0, real_x * nx)
+                    plt.ylim(0, real_y * ny)
 
                 if save:
                     plt.savefig(f"{iso}_guide.png", dpi=150, bbox_inches='tight', pad_inches=0)
