@@ -50,7 +50,7 @@ ATOM_ADDINFO = If you want manual setting of Atomic size and colors, you can put
 LAYERS = number of layers to plot from surface.
 RADIUS_TYPE = atomic / van der Waals / ionic radius [Default = ATOMIC]
 # [tip] you can also type a / v / i
-SIZE_RATIO = marker size ratio of atoms [Default = 60]
+SIZE_RATIO = marker size ratio of atoms [Default = 30]
 
 
 

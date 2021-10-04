@@ -29,8 +29,10 @@ def raw_input(bskan_in='bskan.in'):
 def parse_input(raw_options): # 파일 인풋 형식에 따라 구분해둠
     '''raw_options : type_dictionary'''
     option_dict = {}
-    for i in ["MODE", "METHOD", "CMAP", "BSKAN", "VASP", "BLUR_METHOD", "CURRENT", "EXT", "POSCAR", "RADIUS_TYPE", "ATOM_ADDINFO"]:
-        # 처리 필요 없는 경우. 모든 공백이 제거되어서 나오고, BSKAN과 VASP과 같은 대소문자 구분이 필요한 경우는 raw_input에서 앞뒤 공백만 잘려서 나옴
+    for i in ["MODE", "METHOD", "CMAP", "BSKAN", "VASP", "BLUR_METHOD",
+              "CURRENT", "EXT", "POSCAR", "RADIUS_TYPE", "ATOM_ADDINFO"]:
+        # Input as it is.
+        # All whitespaces are removed, BSKAN과 VASP과 같은 대소문자 구분이 필요한 경우는 raw_input에서 앞뒤 공백만 잘려서 나옴
         if i in raw_options:
             option_dict[i] = raw_options[i]
     for i in ["BIAS", "ISO"]: # _와 &를 사용해 여러 값을 넣는 경우
@@ -130,7 +132,7 @@ class Bskan_input:
         self.atom_addinfo = None
         self.layers = 1
         self.radius_type = "ATOMIC"
-        self.size_ratio = 60
+        self.size_ratio = 30
         self.contour_resolution = 200
 
         # for Postprocessing
@@ -231,9 +233,28 @@ class Bskan_input:
             if "BLUR_SIGMA" in self.options:
                 self.blur_sigma = self.options["BLUR_SIGMA"]
 
-    def export(self):
+    def export(self, filename="bskan.in"):
         # TODO: for GUI to CLI
-        pass
+        with open(filename, 'w') as fileobj:
+            print(f"MODE = {self.mode}", file=fileobj)
+
+            # (1) Calculation Parts
+            if self.mode == "CALCULATION":
+                print(f"VASP = {self.vasp}")
+                print(f"BSKAN = {self.bskan}")
+                print(f"METHOD = {self.method}")
+                print(f"BIAS = {self.bias}")
+
+            # (2) Image Parts
+            elif self.mode == "IMAGE":
+                # TODO 여기서부터 하면 됨
+                print(f"CURRENT = {self.current}")
+
+            else:
+                # TODO 아직 안했엉
+                pass
+
+
 
 
 def main(input_file='bskan.in'):

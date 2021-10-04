@@ -120,7 +120,7 @@ b. Image Parts
 
   [tip] you can also type a / v / i
   
-``SIZE_RATIO`` = marker size ratio of atoms [Default = 60]
+``SIZE_RATIO`` = marker size ratio of atoms [Default = 30]
 
 
 ------------------------

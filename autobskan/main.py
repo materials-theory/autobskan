@@ -12,12 +12,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
 from numpy import pi, sin, cos, sqrt
-import os, glob, copy
+import os
+import glob
+import copy
 import scipy.ndimage as ndimage
 from ase.io.vasp import read_vasp, write_vasp
 
 import autobskan.input.input
 from autobskan.image import stmplot, post_processing, AR
+
 
 def main():
 	if os.path.exists("bskan.in"):
@@ -38,7 +41,7 @@ def main():
 		with open(bskan_input.atom_addinfo, 'r') as addinfo:
 			bskan_input.atom_addinfo = addinfo.readlines()
 
-	if bskan_input.mode=="IMAGE":
+	if bskan_input.mode == "IMAGE":
 		if isinstance(bskan_input.current, str):
 			if bskan_input.current == "ALL" :
 				bskan_input.current = "*"
