@@ -393,8 +393,16 @@ def main(current, bskan_input, image_dir='.', save=True, ax_stm=None,
                         levels=np.linspace(0 - brighter, 1 + darker, int(resolution * (1 + abs(brightness)))))
         ax_stm.axis("off")
         ax_stm.set_aspect("equal")
+
+        if not plot_repeat:
+            ax_stm.set_xlim(0, real_x)
+            ax_stm.set_ylim(0, real_y)
+        else:
+            ax_stm.set_xlim(0, real_x*nx)
+            ax_stm.set_ylim(0, real_y*ny)
+
         if save:
-            plt.savefig(f"{iso}.png", dpi=150, bbox_inches='tight', pad_inches=0)
+            plt.savefig(f"{iso}.png", dpi=300, bbox_inches='tight', pad_inches=0)
             plt.close()
 
         if plot_atoms:
@@ -465,7 +473,7 @@ def main(current, bskan_input, image_dir='.', save=True, ax_stm=None,
                     plt.ylim(0, real_y * ny)
 
                 if save:
-                    plt.savefig(f"{iso}_guide.png", dpi=150, bbox_inches='tight', pad_inches=0)
+                    plt.savefig(f"{iso}_guide.png", dpi=300, bbox_inches='tight', pad_inches=0)
                     os.chdir("../")
                     plt.close()
 

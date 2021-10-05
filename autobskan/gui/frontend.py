@@ -3,6 +3,7 @@ import numpy as np
 import tkinter as tk
 import tkinter.ttk as ttk
 from tkinter import filedialog
+import tkinter.messagebox as msgbox
 # from tkinter import PhotoImage
 
 import matplotlib
@@ -17,8 +18,18 @@ from autobskan.input.input import Bskan_input
 from autobskan.image import stmplot, post_processing, AR
 
 
+def plot_cell(ax, a_vec, b_vec, nx=1, ny=1, **kwargs):
+    assert len(a_vec)==2 and len(b_vec)==2
+    for i_nx in range(-nx, 2*nx):
+        origin = i_nx * a_vec
+        ax.plot(*np.array([origin, origin + b_vec * (2*ny + 1)]).T, **kwargs)
+
+    for i_ny in range(0, 2*ny):
+        origin = i_ny * b_vec - i_ny * a_vec
+        ax.plot(*np.array([origin, origin + a_vec * (3*nx + 1)]).T, **kwargs)
+
 def main():
-    global fig, fig2, fig3, current, bskan_input
+    global fig, current, bskan_input
     global iso_min, iso_max, iso_recommended
     global showatoms, showrepeat, showblur, showunitcell, showcursor
     global max_nlayer, surf
@@ -64,6 +75,13 @@ def main():
         if current is not None:
             stmplot.main(current, bskan_input, save=False, ax_stm = ax,
                          plot_atoms = showatoms.get(), plot_repeat=showrepeat.get(), blur=showblur.get())
+
+            if showunitcell.get() and bskan_input.poscar is not None:
+                ab_vec = bskan_input.poscar.cell[:2, :2]
+                if not showrepeat.get():
+                    nx, ny = 1, 1
+                plot_cell(ax = ax, a_vec = ab_vec[0], b_vec = ab_vec[1], nx=nx, ny=ny, ls="-", lw=2, c="k")
+
             canvas.draw()
 
     def open_cur_file():
@@ -72,7 +90,10 @@ def main():
 
         curfile.delete(0, tk.END)
         curfile.insert(0, filedialog.askopenfilename())
-        current = stmplot.Current(curfile.get())
+        try:
+            current = stmplot.Current(curfile.get())
+        except:
+            msgbox.showerror("Error", f"Wrong format of CURRENT file: {curfile.get()}")
 
         iso_min = current.iso_min
         iso_max = current.iso_max
@@ -99,7 +120,11 @@ def main():
         global max_nlayer, surf
 
         filename = strfile.get()
-        bskan_input.poscar = read_vasp(filename)
+        try:
+            read_vasp(filename)
+        except:
+            msgbox.showerror("Error", f"Wrong format of VASP structure: {filename}")
+        bskan_input.poscar = AR.to_new_cell(read_vasp(filename))
         bskan_input.gamma = bskan_input.poscar.cell.cellpar()[-1]
         manual_gamma.delete(0, tk.END)
         manual_gamma.insert(0, f"{bskan_input.gamma:.3f}")
@@ -202,7 +227,7 @@ def main():
                                         variable=showblur, anchor="w", command=update_image)
     check_showblur.pack(side="top", fill="both", expand=True)
 
-    check_showunitcell = tk.Checkbutton(toggle_frame, text="Show unit cell",
+    check_showunitcell = tk.Checkbutton(toggle_frame, text="Show unit cell grids",
                                         variable=showunitcell, anchor="w", command=update_image)
 
     check_showunitcell.pack(side="top", fill="both", expand=True)
@@ -214,7 +239,7 @@ def main():
     check_showatoms.select()
     check_showrepeat.deselect()
     check_showblur.deselect()
-    check_showunitcell.select()
+    check_showunitcell.deselect()
     check_showcursor.select()
     # check_showcursor.state(["selected"]) # How to select in ttk.Checkbutton?
 
@@ -235,7 +260,7 @@ def main():
         rp_cmd(0, update=False)
 
         check_showatoms.select()
-        check_showunitcell.select()
+        check_showunitcell.deselect()
         check_showrepeat.deselect()
         check_showblur.deselect()
         check_showcursor.select()
@@ -261,14 +286,17 @@ def main():
         nlayer_cmd2(update=False)
 
         ratom.delete(0, tk.END)
-        ratom.insert(0, 30)
+        ratom.insert(0, 15)
         ratom_cmd2(update=False)
 
         update_image() # update image at once
 
     def save_figure_as(event=None):
-        # TODO 저장하기. 나도코딩 보면 될 듯
-        pass
+        # save_directory = filedialog.askdirectory()
+        save_directory = filedialog.asksaveasfilename()
+        if save_directory == "":
+            return
+        fig.savefig(save_directory, dpi=150, bbox_inches='tight', pad_inches=0)
 
     save_figure = ttk.Button(file_frame, text="SAVE IMAGE",
                              command = save_figure_as)
@@ -419,8 +447,28 @@ def main():
         if update:
             update_image()
 
-    ratom_label = ttk.LabelFrame(opt_frame, text="Atom radius scale")
-    ratom_label.pack(side="top", fill="x", expand=True)
+    def ratom_type_cmd(event=None, update=True):
+        bskan_input.radius_type = ratom_type.get()
+        if update:
+            update_image()
+
+    ratom_type = tk.StringVar()
+    ratom_frame = ttk.LabelFrame(opt_frame, text="Atom plot options")
+    ratom_frame.pack(side="top", fill="x", expand=True)
+    ratom_btn1 = tk.Radiobutton(ratom_frame, text="Atomic", value="ATOMIC",
+                                variable=ratom_type, command=ratom_type_cmd)
+    ratom_btn1.select()
+    ratom_btn2 = tk.Radiobutton(ratom_frame, text="vdW", value="VDW",
+                                variable=ratom_type, command=ratom_type_cmd)
+    ratom_btn3 = tk.Radiobutton(ratom_frame, text="Ionic", value="IONIC",
+                                variable=ratom_type, command=ratom_type_cmd)
+    ratom_btn1.grid(row=0, column=0, sticky="news", padx=5)
+    ratom_btn2.grid(row=0, column=1, sticky="news", padx=5)
+    ratom_btn3.grid(row=0, column=2, sticky="news", padx=5)
+
+    ratom_label = ttk.LabelFrame(ratom_frame, text="Atom radius scale")
+    # ratom_label.pack(side="top", fill="x", expand=True)
+    ratom_label.grid(row=1, columnspan=3, sticky="news", pady=10)
     ratom_var = tk.DoubleVar()
     ratom_scale = tk.Scale(ratom_label, variable=ratom_var, orient=tk.HORIZONTAL,
                            from_=0, to=100, resolution=5, command = ratom_cmd,
@@ -430,7 +478,7 @@ def main():
                         command = ratom_cmd2)
     ratom.bind("<Return>", ratom_cmd2)
     ratom.delete(0, tk.END)
-    ratom.insert(0, 30)
+    ratom.insert(0, 15)
     ratom_cmd2()
     ratom.pack(fill="x", expand=True)
 
