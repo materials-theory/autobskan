@@ -9,7 +9,7 @@ import tkinter.messagebox as msgbox
 import matplotlib
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
-from matplotlib.widgets import Cursor, Button
+# from matplotlib.widgets import Cursor, Button
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 from ase.io.vasp import read_vasp
@@ -31,7 +31,7 @@ def plot_cell(ax, a_vec, b_vec, nx=1, ny=1, **kwargs):
 def main():
     global fig, current, bskan_input
     global iso_min, iso_max, iso_recommended
-    global showatoms, showrepeat, showblur, showunitcell, showcursor
+    global showatoms, showrepeat, showblur, showunitcell  # , showcursor
     global max_nlayer, surf
 
     main_window = tk.Tk()
@@ -52,7 +52,7 @@ def main():
     showrepeat = tk.BooleanVar()
     showblur = tk.BooleanVar()
     showunitcell = tk.BooleanVar()
-    showcursor = tk.BooleanVar()
+    # showcursor = tk.BooleanVar()
 
     bskan_input = Bskan_input(None)
     current = None
@@ -71,6 +71,12 @@ def main():
 
         ax = fig.gca()
         ax.clear()
+
+        def onclick(event):
+            x1, y1 = event.xdata, event.ydata
+
+        # cursor = Cursor(ax, horizOn=True, vertOn=True, color="green", linewidth=2)
+        # canvas.mpl_connect("button_press_event", onclick)
 
         if current is not None:
             stmplot.main(current, bskan_input, save=False, ax_stm = ax,
@@ -232,16 +238,15 @@ def main():
 
     check_showunitcell.pack(side="top", fill="both", expand=True)
 
-    check_showcursor = tk.Checkbutton(toggle_frame, text="Show cursor",
-                                      variable = showcursor, anchor="w", command=update_image)
-    check_showcursor.pack(side="top", fill="both", expand=True)
+    # check_showcursor = tk.Checkbutton(toggle_frame, text="Show cursor",
+    #                                   variable = showcursor, anchor="w", command=update_image)
+    # check_showcursor.pack(side="top", fill="both", expand=True)
 
     check_showatoms.select()
     check_showrepeat.deselect()
     check_showblur.deselect()
     check_showunitcell.deselect()
-    check_showcursor.select()
-    # check_showcursor.state(["selected"]) # How to select in ttk.Checkbutton?
+    # check_showcursor.select()
 
     repeat_lbl = ttk.LabelFrame(file_frame, text="Repeat (x, y)")
     repeat_lbl.grid(row=5, column=0, sticky="news", pady=20)
@@ -263,7 +268,7 @@ def main():
         check_showunitcell.deselect()
         check_showrepeat.deselect()
         check_showblur.deselect()
-        check_showcursor.select()
+        # check_showcursor.select()
 
         brightness.delete(0, tk.END)
         brightness.insert(0, 0.0)

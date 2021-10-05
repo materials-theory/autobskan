@@ -40,10 +40,14 @@ def image_iter(file, x, y, gamma, name, savedir="generated_iter"):
     return f"{savedir}/{name}_{x}x{y}.png"
 
 
-def array_iter(Z, nx = 2, ny = 2, gamma=90, real_x = None, real_y = None):
+def array_iter(Z_orig, nx = 2, ny = 2, gamma=90, real_x = None, real_y = None):
 
-    size_y, size_x = Z.shape
-    Z = Z[:-1, :-1] # Remove duplicated values.. Z[real_x] == Z[0]
+    size_y, size_x = Z_orig.shape
+    # Remove duplicated values..
+    # Z_orig[-1] == np.roll(Z_orig[0]) (confirmed)
+    # Z_orig[:,0] == Z_orig[:,-1]
+
+    Z = Z_orig[:-1,:-1]
     if np.round(gamma, 4) in [60., 120.]:
         gamma = 90
     G = np.radians(gamma)
@@ -52,26 +56,36 @@ def array_iter(Z, nx = 2, ny = 2, gamma=90, real_x = None, real_y = None):
     # when gamma=90, x_cut = 0
     x_cut = int(np.round(size_y*c_g/s_g, 0))
 
-    Z_result = np.hstack([Z] * nx)
-    for i in range(1, ny):
+    # Z_result = np.hstack([Z] * nx)
+    Z_result = np.hstack([Z]*(nx-1) + [Z_orig[:-1]])
+    Z_hor = Z_result.copy()
+    for i in range(1, ny+1):
         if x_cut != 0:
-            attach = np.roll(Z, axis=1, shift=x_cut*i)
+            # attach = np.roll(Z, axis=1, shift=x_cut*i)
+            attach = np.roll(Z_hor, axis=1, shift=x_cut * i)
         else:
-            attach = Z
-        attach = np.hstack([attach] * nx)
-        Z_result = np.vstack((Z_result, attach))
+            attach = Z_hor
+        # attach = np.hstack([attach] * nx)
+        if i!=ny:
+            Z_result = np.vstack((Z_result, attach))
+        else:
+            print(attach[0].shape)
+            Z_result = np.vstack((Z_result, attach[0]))
 
     if real_x is not None:
         assert real_y is not None
-        X = np.linspace(0, real_x * nx, (size_x-1) * nx) # To remove duplicated Z[real_x] == Z[0]
-        Y = np.linspace(0, real_y * ny, (size_y-1) * ny)
+        # X = np.linspace(0, real_x * nx, (size_x-1) * nx) # To remove duplicated Z[real_x] == Z[0]
+        # Y = np.linspace(0, real_y * ny, (size_y-1) * ny)
+        X = np.linspace(0, real_x * nx, (size_x-1) * nx + 1) # To remove duplicated Z[real_x] == Z[0]
+        Y = np.linspace(0, real_y * ny, (size_y-1) * ny + 1)
 
         # X, Y = [], []
         # for i in range(nx):
         #     X += list(np.linspace(0+real_x*i, real_x*(i+1), size_x))
         # for j in range(ny):
         #     Y += list(np.linspace(0+real_y*j, real_y*(j+1), size_y))
-        # X, Y = np.meshgrid(X, Y)
+        X, Y = np.meshgrid(X, Y)
+        print(X.shape, Y.shape, Z_result.shape)
 
         return X, Y, Z_result
     else:
