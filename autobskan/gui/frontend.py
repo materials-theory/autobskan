@@ -31,7 +31,7 @@ def plot_cell(ax, a_vec, b_vec, nx=1, ny=1, **kwargs):
 def main():
     global fig, current, bskan_input
     global iso_min, iso_max, iso_recommended
-    global showatoms, showrepeat, showblur, showunitcell  # , showcursor
+    global showatoms, showrepeat, showblur, showunitcell, showscalebar  # , showcursor
     global max_nlayer, surf
 
     main_window = tk.Tk()
@@ -52,6 +52,7 @@ def main():
     showrepeat = tk.BooleanVar()
     showblur = tk.BooleanVar()
     showunitcell = tk.BooleanVar()
+    showscalebar = tk.BooleanVar()
     # showcursor = tk.BooleanVar()
 
     bskan_input = Bskan_input(None)
@@ -72,9 +73,8 @@ def main():
         ax = fig.gca()
         ax.clear()
 
-        def onclick(event):
-            x1, y1 = event.xdata, event.ydata
-
+        # def onclick(event):
+        #     x1, y1 = event.xdata, event.ydata
         # cursor = Cursor(ax, horizOn=True, vertOn=True, color="green", linewidth=2)
         # canvas.mpl_connect("button_press_event", onclick)
 
@@ -88,14 +88,24 @@ def main():
                     nx, ny = 1, 1
                 plot_cell(ax = ax, a_vec = ab_vec[0], b_vec = ab_vec[1], nx=nx, ny=ny, ls="-", lw=2, c="k")
 
+            if showscalebar.get():
+                scale_reference = float(scalebar.get())
+                x_position = 9/10 * real_x
+                y_position = 1/10 * real_y
+                ax.plot([x_position - scale_reference, x_position], [y_position] * 2, lw=7, c="k")
+                ax.plot([x_position - scale_reference, x_position], [y_position] * 2, lw=5, c="white")
+
             canvas.draw()
 
     def open_cur_file():
         global iso_min, iso_max, iso_recommended
         global current
+        input_curfilename = filedialog.askopenfilename()
+        if input_curfilename == "":
+            return
 
         curfile.delete(0, tk.END)
-        curfile.insert(0, filedialog.askopenfilename())
+        curfile.insert(0, input_curfilename)
         try:
             current = stmplot.Current(curfile.get())
         except:
@@ -118,8 +128,11 @@ def main():
         update_image()
 
     def open_str_file():
+        input_str_filename = filedialog.askopenfilename()
+        if input_str_filename == "":
+            return
         strfile.delete(0, tk.END)
-        strfile.insert(0, filedialog.askopenfilename())
+        strfile.insert(0, input_str_filename)
         update_poscar()
 
     def update_poscar(event=None):
@@ -221,6 +234,18 @@ def main():
         if update:
             update_image()
 
+    def scalebar_cmd(event=None, update=True):
+        if showscalebar.get():
+            if showrepeat.get():
+                temp_real_x = current.cellpar[0] * bskan_input.iteration[0]
+            else:
+                temp_real_x = current.cellpar[0]
+
+            if float(scalebar.get()) > temp_real_x:
+                msgbox.showerror("Error", f"Scalebar value should be shorter than the width of STM image: {temp_real_x}")
+            else:
+                update_image()
+
     check_showatoms = tk.Checkbutton(toggle_frame, text="Show atoms",
                                      variable=showatoms, anchor="w", command=update_image)
     check_showatoms.pack(side="top", fill="both", expand=True)
@@ -238,6 +263,10 @@ def main():
 
     check_showunitcell.pack(side="top", fill="both", expand=True)
 
+    check_showscalebar = tk.Checkbutton(toggle_frame, text="Show scale bar",
+                                        variable=showscalebar, anchor="w", command=update_image)
+    check_showscalebar.pack(side="top", fill="both", expand=True)
+
     # check_showcursor = tk.Checkbutton(toggle_frame, text="Show cursor",
     #                                   variable = showcursor, anchor="w", command=update_image)
     # check_showcursor.pack(side="top", fill="both", expand=True)
@@ -246,10 +275,20 @@ def main():
     check_showrepeat.deselect()
     check_showblur.deselect()
     check_showunitcell.deselect()
+    check_showscalebar.deselect()
     # check_showcursor.select()
 
+    scalebar_lbl = ttk.LabelFrame(file_frame, text="Scalebar (Å)")
+    scalebar_lbl.grid(row=5, column=0, sticky="news", pady=20)
+    scalebar = ttk.Entry(scalebar_lbl)
+    scalebar.pack()
+    scalebar.delete(0, tk.END)
+    scalebar.insert(0, '5')
+    scalebar.bind("<Return>", scalebar_cmd)
+
+
     repeat_lbl = ttk.LabelFrame(file_frame, text="Repeat (x, y)")
-    repeat_lbl.grid(row=5, column=0, sticky="news", pady=20)
+    repeat_lbl.grid(row=6, column=0, sticky="news", pady=20)
     repeat = ttk.Entry(repeat_lbl)
     repeat.pack()
     repeat.delete(0, tk.END)
@@ -264,10 +303,14 @@ def main():
         repeat.insert(0, '2, 2')
         rp_cmd(0, update=False)
 
+        scalebar.delete(0, tk.END)
+        scalebar.insert(0, '5')
+
         check_showatoms.select()
         check_showunitcell.deselect()
         check_showrepeat.deselect()
         check_showblur.deselect()
+        check_showscalebar.deselect()
         # check_showcursor.select()
 
         brightness.delete(0, tk.END)
@@ -291,7 +334,7 @@ def main():
         nlayer_cmd2(update=False)
 
         ratom.delete(0, tk.END)
-        ratom.insert(0, 15)
+        ratom.insert(0, 10)
         ratom_cmd2(update=False)
 
         update_image() # update image at once
@@ -305,11 +348,11 @@ def main():
 
     save_figure = ttk.Button(file_frame, text="SAVE IMAGE",
                              command = save_figure_as)
-    save_figure.grid(row=6, column=0, sticky="news", pady=20)
+    save_figure.grid(row=7, column=0, sticky="news", pady=10)
 
     set_as_default = ttk.Button(file_frame, text="SET AS DEFAULT",
                                 command = return_to_default)
-    set_as_default.grid(row=7, column=0, sticky="news", pady=20)
+    set_as_default.grid(row=8, column=0, sticky="news", pady=10)
 
     # Checknig variables
     # def tempprt():
@@ -476,14 +519,14 @@ def main():
     ratom_label.grid(row=1, columnspan=3, sticky="news", pady=10)
     ratom_var = tk.DoubleVar()
     ratom_scale = tk.Scale(ratom_label, variable=ratom_var, orient=tk.HORIZONTAL,
-                           from_=0, to=100, resolution=5, command = ratom_cmd,
+                           from_=0.0, to=30.0, resolution=1, command = ratom_cmd,
                            showvalue=False)
     ratom_scale.pack(side="bottom", fill="x", expand=True)
-    ratom = ttk.Spinbox(ratom_label, from_=0, to=100, increment=5,
+    ratom = ttk.Spinbox(ratom_label, from_=0.0, to=30.0, increment=1,
                         command = ratom_cmd2)
     ratom.bind("<Return>", ratom_cmd2)
     ratom.delete(0, tk.END)
-    ratom.insert(0, 15)
+    ratom.insert(0, 10.0)
     ratom_cmd2()
     ratom.pack(fill="x", expand=True)
 
@@ -501,7 +544,7 @@ def main():
         if update:
             update_image()
 
-    gaus_label = ttk.LabelFrame(opt_frame, text="Gaussian Blurring sigma")
+    gaus_label = ttk.LabelFrame(opt_frame, text="sigma for Gaussian filter")
     gaus_label.pack(side="top", fill="x", expand=True)
     gaus_var = tk.DoubleVar()
     gaus_scale = tk.Scale(gaus_label, variable=gaus_var, orient=tk.HORIZONTAL,

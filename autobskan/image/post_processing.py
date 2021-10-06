@@ -57,40 +57,27 @@ def array_iter(Z_orig, nx = 2, ny = 2, gamma=90, real_x = None, real_y = None):
     x_cut = int(np.round(size_y*c_g/s_g, 0))
 
     # Z_result = np.hstack([Z] * nx)
-    Z_result = np.hstack([Z]*(nx-1) + [Z_orig[:-1]])
+    Z_result = np.hstack([Z]*nx)
     Z_hor = Z_result.copy()
     for i in range(1, ny+1):
         if x_cut != 0:
-            # attach = np.roll(Z, axis=1, shift=x_cut*i)
             attach = np.roll(Z_hor, axis=1, shift=x_cut * i)
         else:
             attach = Z_hor
-        # attach = np.hstack([attach] * nx)
         if i!=ny:
             Z_result = np.vstack((Z_result, attach))
         else:
-            print(attach[0].shape)
-            Z_result = np.vstack((Z_result, attach[0]))
+            Z_result = np.vstack((Z_result, attach[0].reshape(1,-1)))
+    Z_result = np.hstack((Z_result, Z_result[:,0].reshape(-1,1)))
 
     if real_x is not None:
         assert real_y is not None
-        # X = np.linspace(0, real_x * nx, (size_x-1) * nx) # To remove duplicated Z[real_x] == Z[0]
-        # Y = np.linspace(0, real_y * ny, (size_y-1) * ny)
         X = np.linspace(0, real_x * nx, (size_x-1) * nx + 1) # To remove duplicated Z[real_x] == Z[0]
         Y = np.linspace(0, real_y * ny, (size_y-1) * ny + 1)
-
-        # X, Y = [], []
-        # for i in range(nx):
-        #     X += list(np.linspace(0+real_x*i, real_x*(i+1), size_x))
-        # for j in range(ny):
-        #     Y += list(np.linspace(0+real_y*j, real_y*(j+1), size_y))
         X, Y = np.meshgrid(X, Y)
-        print(X.shape, Y.shape, Z_result.shape)
-
         return X, Y, Z_result
     else:
         return Z_result
-
 # --------------------------------------------------------------------------------  [blurring] -> generate png and save it to generated_blur/ directory
 def image_blur(file, blur_sigma, name, savedir = "generated_blur"):
     '''blur_sigma = blur strength, only blur task -> onlyblur='t' '''

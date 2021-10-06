@@ -433,14 +433,17 @@ def main(current, bskan_input, image_dir='.', save=True, ax_stm=None,
                         color_temp = (float(c_r) / 255, float(c_g) / 255, float(c_b) / 255)
                         size_and_color[symbol] = (float(radius), color)
 
-                str_bskan = vasp_to_bskan(bskan_input.poscar, current)[0]
-                if save:
-                    write_vasp("bskan_structure.vasp", str_bskan, vasp5=True, direct=True, sort=True)
-                # atom_species = np.array(AR.species(str_bskan.get_chemical_symbols(), overall=True))
                 if plot_repeat:
-                    str_bskan = make_supercell(str_bskan, np.diag((nx+1, ny+1, 1)))
-                surf = Surf(str_bskan, al_tol=0.5)
+                    atoms_for_plot = make_supercell(bskan_input.poscar, np.diag((nx+1+ny, ny+1, 1)))
+                    # TODO how about the hexagonal cell
+                else:
+                    # atoms_for_plot = bskan_input.poscar.copy()
+                    atoms_for_plot = vasp_to_bskan(bskan_input.poscar, current)[0]
+
+                surf = Surf(atoms_for_plot, al_tol=0.5)
                 surf = AR.to_new_cell(sort(surf.atoms, tags=surf.atoms.get_tags()))
+                if plot_repeat:
+                    surf.translate(-bskan_input.poscar.cell[0] * (ny+1))
                 plot_layers = AR.species(surf.get_tags(), overall=True)[-1:-n_layers_for_plot - 1:-1]
 
                 if save:
