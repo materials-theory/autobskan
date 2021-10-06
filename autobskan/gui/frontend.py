@@ -18,15 +18,27 @@ from autobskan.input.input import Bskan_input
 from autobskan.image import stmplot, post_processing, AR
 
 
-def plot_cell(ax, a_vec, b_vec, nx=1, ny=1, **kwargs):
+def plot_cell(ax, a_vec, b_vec, nx=1, ny=1, hexagonal=False, **kwargs):
     assert len(a_vec)==2 and len(b_vec)==2
-    for i_nx in range(-nx, 2*nx):
-        origin = i_nx * a_vec
-        ax.plot(*np.array([origin, origin + b_vec * (2*ny + 1)]).T, **kwargs)
+    if hexagonal:
+        # a_vec and b_vec is the vector of orthogonalized cell
+        # a_vec, b_vec = a_vec + b_vec, -a_vec + b_vec
+        cell_a_vec, cell_b_vec = np.array([[1, 1],[-1, 1]]) @ np.array([a_vec, b_vec])
+        for i_nx in range(-ny, nx):
+            origin = i_nx * a_vec
+            ax.plot(*np.array([origin, origin + cell_a_vec * (ny + 1)]).T, **kwargs)
+        for i_ny in range(1, nx + ny):
+            origin = i_ny * a_vec
+            ax.plot(*np.array([origin, origin + cell_b_vec * (ny + 1)]).T, **kwargs)
 
-    for i_ny in range(0, 2*ny):
-        origin = i_ny * b_vec - i_ny * a_vec
-        ax.plot(*np.array([origin, origin + a_vec * (3*nx + 1)]).T, **kwargs)
+    else:
+        for i_nx in range(-nx, 2*nx):
+            origin = i_nx * a_vec
+            ax.plot(*np.array([origin, origin + b_vec * (ny + 1)]).T, **kwargs)
+
+        for i_ny in range(0, ny+1):
+            origin = i_ny * b_vec - i_ny * a_vec
+            ax.plot(*np.array([origin, origin + a_vec * (i_ny + nx + 1)]).T, **kwargs)
 
 def main():
     global fig, current, bskan_input
@@ -86,7 +98,12 @@ def main():
                 ab_vec = bskan_input.poscar.cell[:2, :2]
                 if not showrepeat.get():
                     nx, ny = 1, 1
-                plot_cell(ax = ax, a_vec = ab_vec[0], b_vec = ab_vec[1], nx=nx, ny=ny, ls="-", lw=2, c="k")
+
+                hexagonal = True if np.round(bskan_input.poscar.cell.cellpar()[-1], 4) in [60., 120.] else False
+                if hexagonal:
+                    ab_vec = current.cell[:2,:2]
+                plot_cell(ax = ax, a_vec = ab_vec[0], b_vec = ab_vec[1],
+                          nx=nx, ny=ny, ls=":", lw=1, c="k", hexagonal=hexagonal)
 
             if showscalebar.get():
                 scale_reference = float(scalebar.get())
@@ -254,18 +271,17 @@ def main():
                                         variable=showrepeat, anchor="w", command=rp_cmd)
     check_showrepeat.pack(side="top", fill="both", expand=True)
 
-    check_showblur = tk.Checkbutton(toggle_frame, text="Show gaussian blurred image",
-                                        variable=showblur, anchor="w", command=update_image)
-    check_showblur.pack(side="top", fill="both", expand=True)
-
     check_showunitcell = tk.Checkbutton(toggle_frame, text="Show unit cell grids",
                                         variable=showunitcell, anchor="w", command=update_image)
-
     check_showunitcell.pack(side="top", fill="both", expand=True)
 
     check_showscalebar = tk.Checkbutton(toggle_frame, text="Show scale bar",
                                         variable=showscalebar, anchor="w", command=update_image)
     check_showscalebar.pack(side="top", fill="both", expand=True)
+
+    check_showblur = tk.Checkbutton(toggle_frame, text="Show gaussian filtered image",
+                                        variable=showblur, anchor="w", command=update_image)
+    check_showblur.pack(side="top", fill="both", expand=True)
 
     # check_showcursor = tk.Checkbutton(toggle_frame, text="Show cursor",
     #                                   variable = showcursor, anchor="w", command=update_image)
@@ -302,6 +318,10 @@ def main():
         repeat.delete(0, tk.END)
         repeat.insert(0, '2, 2')
         rp_cmd(0, update=False)
+
+        manual_gamma.delete(0, tk.END)
+        manual_gamma.insert(0, f"{bskan_input.gamma:.3f}")
+        update_gamma(update=False)
 
         scalebar.delete(0, tk.END)
         scalebar.insert(0, '5')

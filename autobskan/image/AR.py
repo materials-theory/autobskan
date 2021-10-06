@@ -12,22 +12,20 @@ from numpy import cos, sin, tan, sqrt
 import numpy as np
 import glob
 import os
-import argparse
-import copy
 
 # class AR: @staticmethod
-def length(X):
-    from math import sqrt
-    '''
-    calculate the length of vector. Regardless of the direction.
-    X : np.array, dtype=float
-    Output (Results) : float type
-    '''
-    X=np.array(X,dtype='d')
-    temp = 0
-    for i in X:
-        temp+=i**2
-    return sqrt(temp)
+# def length(X):
+#     from math import sqrt
+#     '''
+#     calculate the length of vector. Regardless of the direction.
+#     X : np.array, dtype=float
+#     Output (Results) : float type
+#     '''
+#     X=np.array(X,dtype='d')
+#     temp = 0
+#     for i in X:
+#         temp+=i**2
+#     return sqrt(temp)
 
 def species(X, overall = True):
     '''

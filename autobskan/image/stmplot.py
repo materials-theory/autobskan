@@ -305,16 +305,16 @@ def vasp_to_bskan(str_vasp, current):
         # sometimes... 119.99999999991849 degree arises
         ctype = "hexagonal"
         A1, A2 = str_vasp.cell[0], str_vasp.cell[1]
-        AR1 = AR.length(A1 + A2)
-        AR2 = AR.length(A1 - A2)
-        if np.round(AR1, 4) == np.round(current.cellpar[0]):
+        AR1 = np.linalg.norm(A1 + A2)
+        AR2 = np.linalg.norm(A1 - A2)
+        if np.round(AR1, 4) == np.round(current.cellpar[0], 4):
             X = np.array([[1, 1, 0], [1, -1, 0], [0, 0, 1]])
             # AR1 becomes new axis
         else:
             X = np.array([[1, -1, 0], [1, 1, 0], [0, 0, 1]])
             # AR2 becomes new axis        
         str_bskan = make_supercell(str_vasp, X)
-    elif poscar_cellpar[-1] == 90:
+    elif np.round(poscar_cellpar[-1], 4) == 90:
         ctype = "quadratic"
         str_bskan = AR.to_new_cell(str_vasp.copy())
     else:
@@ -379,7 +379,6 @@ def main(current, bskan_input, image_dir='.', save=True, ax_stm=None,
 
         if blur:
             Z = ndimage.gaussian_filter(Z, sigma=bskan_input.blur_sigma, order=0)
-            # Error occurs because of overlapping x and y coordinates.
 
         if not save:
             data_to_return.append([X, Y, Z])
@@ -435,7 +434,9 @@ def main(current, bskan_input, image_dir='.', save=True, ax_stm=None,
 
                 if plot_repeat:
                     atoms_for_plot = make_supercell(bskan_input.poscar, np.diag((nx+1+ny, ny+1, 1)))
-                    # TODO how about the hexagonal cell
+                    if np.round(atoms_for_plot.cell.cellpar()[-1], 4) in [60., 120.]:
+                        atoms_for_plot = make_supercell(vasp_to_bskan(bskan_input.poscar, current)[0],
+                                                        np.diag((nx+1+ny, ny+1, 1)))
                 else:
                     # atoms_for_plot = bskan_input.poscar.copy()
                     atoms_for_plot = vasp_to_bskan(bskan_input.poscar, current)[0]
