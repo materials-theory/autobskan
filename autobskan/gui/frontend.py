@@ -234,7 +234,7 @@ def main():
             update_image()
     cmap_frame = ttk.LabelFrame(file_frame, text="Colormap")
     cmap_frame.grid(row=3, column=0, sticky="news")
-    cmap = ttk.Combobox(cmap_frame, state="readonly", height=5, values=plt.colormaps())
+    cmap = ttk.Combobox(cmap_frame, state="readonly", height=10, values=plt.colormaps())
     cmap.pack(side="top", fill="both", expand=True)
     cmap.set("afmhot")
     cmap.bind("<<ComboboxSelected>>", update_cmap)
@@ -295,7 +295,7 @@ def main():
     # check_showcursor.select()
 
     scalebar_lbl = ttk.LabelFrame(file_frame, text="Scalebar (Å)")
-    scalebar_lbl.grid(row=5, column=0, sticky="news", pady=20)
+    scalebar_lbl.grid(row=5, column=0, sticky="news", pady=10)
     scalebar = ttk.Entry(scalebar_lbl)
     scalebar.pack()
     scalebar.delete(0, tk.END)
@@ -304,7 +304,7 @@ def main():
 
 
     repeat_lbl = ttk.LabelFrame(file_frame, text="Repeat (x, y)")
-    repeat_lbl.grid(row=6, column=0, sticky="news", pady=20)
+    repeat_lbl.grid(row=6, column=0, sticky="news", pady=10)
     repeat = ttk.Entry(repeat_lbl)
     repeat.pack()
     repeat.delete(0, tk.END)
@@ -364,15 +364,20 @@ def main():
         save_directory = filedialog.asksaveasfilename()
         if save_directory == "":
             return
-        fig.savefig(save_directory, dpi=150, bbox_inches='tight', pad_inches=0)
-
-    save_figure = ttk.Button(file_frame, text="SAVE IMAGE",
-                             command = save_figure_as)
-    save_figure.grid(row=7, column=0, sticky="news", pady=10)
+        fig.savefig(save_directory, dpi=300, bbox_inches='tight', pad_inches=0)
 
     set_as_default = ttk.Button(file_frame, text="SET AS DEFAULT",
                                 command = return_to_default)
-    set_as_default.grid(row=8, column=0, sticky="news", pady=10)
+    set_as_default.grid(row=7, column=0, sticky="news", pady=10)
+
+    save_figure = ttk.Button(file_frame, text="SAVE IMAGE",
+                             command = save_figure_as)
+    save_figure.grid(row=8, column=0, sticky="news", pady=10)
+
+    save_figure = ttk.Button(file_frame, text="CLOSE THE WINDOW",
+                             command=main_window.quit)
+                             # command = main_window.destroy)
+    save_figure.grid(row=9, column=0, sticky="news", pady=20)
 
     # Checknig variables
     # def tempprt():

@@ -352,8 +352,8 @@ def main(current, bskan_input, image_dir='.', save=True, ax_stm=None,
     else:
         data_to_return = []
 
-    data = tqdm(bskan_input.iso) if isinstance(bskan_input.iso, list) else [bskan_input.iso]
-    for iso in data:
+    iso_data = [bskan_input.iso] if type(bskan_input.iso) in [int, float] else bskan_input.iso
+    for iso in iso_data:
         real_x, real_y = current.cellpar[:2]
         try:
             Z = seek_z_surface(current.cur_3d, iso)
@@ -403,6 +403,7 @@ def main(current, bskan_input, image_dir='.', save=True, ax_stm=None,
         if save:
             plt.savefig(f"{iso}.png", dpi=300, bbox_inches='tight', pad_inches=0)
             plt.close()
+            ax_stm = None
 
         if plot_atoms:
             if bskan_input.poscar is not None:

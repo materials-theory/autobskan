@@ -1,6 +1,6 @@
 # coding: utf-8
 
-__author__ = "Giyeok Lee", "Inu Kim"
+__author__ = "Giyeok Lee"
 __email__ = "lgy4230@yonsei.ac.kr"
 __date__ = "Oct 08, 2021"
 __maintainer__ = "Giyeok Lee"
@@ -9,14 +9,10 @@ __copyright__ = "Copyright (c) Materials Theory Group @ Yonsei University (2021)
 
 
 import numpy as np
-import matplotlib.pyplot as plt
-from PIL import Image
-from numpy import pi, sin, cos, sqrt
 import os
 import glob
-import copy
-import scipy.ndimage as ndimage
 from ase.io.vasp import read_vasp, write_vasp
+from tqdm import tqdm
 
 import autobskan.input.input
 from autobskan.image import stmplot, post_processing, AR
@@ -49,7 +45,7 @@ def main():
 		else:
 			current_files = bskan_input.current
 
-		for current_file in current_files:
+		for current_file in tqdm(current_files, desc=f"Total {len(current_files)} files"):
 			# try:
 			current = stmplot.Current(current_file)
 			if not os.path.exists(current_file+"_images"):
@@ -71,7 +67,7 @@ def main():
 
 			if not os.path.exists("raw_images"):
 				os.makedirs("raw_images")
-			stmplot.main(current, bskan_input, "raw_images")
+			stmplot.main(current, bskan_input, "raw_images", plot_atoms=True)
 			if bskan_input.post_processing:
 				post_processing.main("raw_images", bskan_input)
 			os.chdir("../")
