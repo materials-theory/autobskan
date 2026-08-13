@@ -8,6 +8,11 @@ from ase import Atoms, Atom
 from ase.geometry import get_layers
 from ase.calculators.vasp.create_input import GenerateVaspInput as GVI
 
+from autobskan.calculation.current_header import asample_to_current
+from autobskan.calculation.symmetry_precheck import (
+    validate_existing_scf_for_bskan,
+    write_bskan_asample,
+)
 from autobskan.io.input import Options
 
 
@@ -322,32 +327,7 @@ def outcar_to_kpoints(OUTCAR):
 
 
 def contcar_to_asample(CONTCAR):
-    poscar_fr = open(CONTCAR, 'r')
-    poscar_line = poscar_fr.readlines()
-    poscar_fr.close()
-    poscar_fw = open('ASAMPLE','w')
-    line_count = 1
-    for line in poscar_line:
-        if len(line) > 1:
-            if line_count <= 5:
-                poscar_fw.write(line)
-                line_count += 1
-            elif line_count == 6:
-                line_count += 1
-            elif line_count == 7:
-                poscar_fw.write(line)
-                line_count += 1
-            elif line_count == 8:
-                if line.split(maxsplit=len(line))[0] == 'S':
-                    poscar_fw.write(line)
-                    line_count += 1
-                else :
-                    poscar_fw.write("Selective dynamics\n")
-                    poscar_fw.write(line)
-                    line_count += 1
-            elif line_count == 9:
-                poscar_fw.write(line)
-    poscar_fw.close()
+    return write_bskan_asample(CONTCAR, "ASAMPLE", force=True)
 
 
 def bias_directory(inp, model, STM, until_tip, th_for_chen=False):
@@ -371,66 +351,19 @@ def bias_directory(inp, model, STM, until_tip, th_for_chen=False):
         except:
             continue
 
-def ctoc():
-    fr = open("CURSAVE", 'r')
-    cursave_line = fr.readlines()
-    fr.close()
-    cur_pos = list()
-    fr = open('./current', 'r')
-    for i in range(0, 6):
-        a = fr.readline()
-        cur_pos.append(a)
-    atom_number = int(a)
-    while True:
-        b = fr.readline()
-        if len(b.split()) >= 5:
-            break
-        cur_pos.append(b)
-        c = b
-    fr.close()
-    n_x, n_y, n_z = c.rstrip().split()
-    nx = int(n_x)
-    ny = int(n_y)
-    nz = int(n_z)
-    cursave_info = list()
-    i = 0
-    a = 0
-    while i < len(cursave_line)-1:
-        if len(cursave_line[i]) == 21:
-            x = float(cursave_line[i].split()[0])
-            y = float(cursave_line[i].split()[1])
-            cursave_info.append([x,y,[]])
-            a += 1
-        i += 1
-        while len(cursave_line[i]) == 13:
-            cursave_info[a-1][2].append(float(cursave_line[i].strip()))
-            i += 1
-            if i == len(cursave_line):
-                break
-    current_info = list()
-    for z in range(0, nz):
-        for i in range(0, ny):
-            b = i
-            for a in range(0, nx):
-                current_info.append(cursave_info[b][2][z])
-                b += ny
-    current_fw = open("CURRENT", 'w')
-    for line in cur_pos:
-        current_fw.write(line)
-    i=0
-    while i < len(current_info):
-        info = "    " + "%.4e"%current_info[i]
-        current_fw.write(info)
-        i += 1
-        if i%5 == 0:
-            current_fw.write("\n")
-    current_fw.close()
+def ctoc(asample_path="ASAMPLE"):
+    """Convert Chen CURSAVE output without requiring a preliminary TH run."""
+
+    return asample_to_current(asample_path)
 
 ###############################################################################
 
 def main(bskan_input = "bskan.in"):
 
     inp = Options(bskan_input)
+
+    # Never shift only a post-SCF POSCAR/ASAMPLE while reusing wavefunctions.
+    validate_existing_scf_for_bskan(inp.option_dict['SCF_PATH'])
 
     ##_current_pwd_##
 
@@ -536,9 +469,9 @@ def main(bskan_input = "bskan.in"):
 
         ##_STM_file_preparation_without_INSCAN_(ASAMPLE,WAVSAMPLE)_##
 
-        write_vasp("CONTCAR_to_read", model, direct = True)
-        contcar_to_asample("CONTCAR_to_read")
-        os.remove("CONTCAR_to_read")
+        # Preserve the original POSCAR count groups. bSKAN treats each group as
+        # a distinct type even when two adjacent groups use the same element.
+        contcar_to_asample(f"{inp.option_dict['SCF_PATH']}/POSCAR")
 
         os.symlink(f"{current_pwd}/1_nonscf/STM",f"{until_tip}/WAVSAMPLE")
     except:
@@ -592,34 +525,6 @@ def main(bskan_input = "bskan.in"):
     ##_calculation_for_CHEN_##
 
     if inp.option_dict['METHOD'] == "CHEN":
-
-        ##_TH_with_bias_0_##
-        if os.path.exists(f"{current_pwd}/2_bskan/STM_TH/NO_TIP"):
-            pass
-        else:
-            shutil.copytree(f"{current_pwd}/2_bskan/STM_CHEN/{tip_title}", f"{current_pwd}/2_bskan/STM_TH/NO_TIP", symlinks=True)
-            os.chdir(f"{current_pwd}/2_bskan/STM_TH/NO_TIP")
-            bias_directory(inp,model,STM,f"{current_pwd}/2_bskan/STM_TH/NO_TIP",th_for_chen=True)
-            os.chdir(f"{current_pwd}/2_bskan/STM_TH/NO_TIP/bias_0")
-            fr = open("./INSCAN",'r')
-            lines = fr.readlines()
-            fr.close()
-            fw = open("./INSCAN",'w')
-            for line in lines:
-                if line == "CHEN\n":
-                    fw.write("TERsoff Hamann\n")
-                else:
-                    fw.write(line)
-            fw.close()
-            calculation_title = "STM_TH_for_CHEN"
-            answer = may_I_calculate(calculation_title,inpjson_path)
-            if answer == True:
-                calculation(inpjson_path, calculation_title, inp, 'TH', dict_data)
-            else:
-                pass
-
-        ##_ready_for_CHEN_##
-
         os.chdir(f"{until_tip}")
         cal_list = glob("bias*")
         for cal in cal_list:
@@ -637,12 +542,5 @@ def main(bskan_input = "bskan.in"):
             if os.path.exists(f"{until_tip}/{cal}/CURRENT"):
                 pass
             else:
-                while True:
-                    if os.path.exists(f"{current_pwd}/2_bskan/STM_TH/NO_TIP/bias_0/current/CURRENT"):
-                        os.symlink(f"{current_pwd}/2_bskan/STM_TH/NO_TIP/bias_0/current/CURRENT",f"{until_tip}/{cal}/current")
-                        ctoc()
-                        break
-                    else:
-                        time.sleep(1)
-                        continue
+                ctoc("ASAMPLE")
             os.symlink(f"{until_tip}/{cal}/CURRENT",f"{current_pwd}/3_result/{inp.option_dict['METHOD']}_{tip_title}_{cal}_CURRENT")
