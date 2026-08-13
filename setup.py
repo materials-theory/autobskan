@@ -1,13 +1,19 @@
-import io
-from setuptools import find_packages, setup, Extension
-from autobskan.main import __version__
+from pathlib import Path
+
+from setuptools import find_packages, setup
+
+ROOT = Path(__file__).resolve().parent
+
+
+# Keep package metadata independent from runtime dependencies. Importing
+# autobskan.main here loads NumPy and ASE before an isolated build can install
+# them, so metadata generation must use a literal version.
+__version__ = '1.0.0'
 
 
 # Read in the README for the long description on PyPI
 def long_description():
-    with io.open('README.rst', 'r', encoding='utf-8') as f:
-        readme = f.read()
-    return readme
+    return (ROOT / 'README.rst').read_text(encoding='utf-8')
 
 setup(name='autobskan',
       version=__version__,
