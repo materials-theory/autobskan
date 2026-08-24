@@ -1,63 +1,25 @@
 ##################################################################
 ## -------------------------About code------------------------- ##
-## bSKAN automation ( IMAGE GENERATING )                        ##
+## bSKAN automation ( IMAGE GENERATION )                        ##
 ## [ Giyeok Lee, Ethan / Inu Kim ] of MTG                       ##
 ## ------------------------------------------------------------ ##
 ##################################################################
 
-from tqdm import tqdm
-import numpy as np
-import matplotlib.pyplot as plt
 import os
-import copy
 
-from ase.build import sort
-from ase.io.vasp import read_vasp, write_vasp
-from ase.geometry.cell import cell_to_cellpar as ctc
+import matplotlib.pyplot as plt
+import numpy as np
 from ase.build import make_supercell
+from ase.data import covalent_radii, vdw_radii
+from ase.geometry.cell import cell_to_cellpar as ctc
+from scipy.interpolate import CubicSpline, interp1d
 
-from scipy.interpolate import interp1d, CubicSpline
-import scipy.ndimage as ndimage
+from autobskan.image import AR, vesta_ar, vesta_colors, vesta_ir, vesta_vr
 
-from autobskan.image import AR, post_processing
-
-
-def gy_norm(X, norm_factor=0, min_val=0, max_val=1):
-    """
-    X : np.array type
-    norm_factor : -1 ~ 1, do not recommend outside of this range.
-    """
-    if norm_factor == 0:
-        return (X - X.min()) / (X.max() - X.min()) * (max_val - min_val) + min_val
-    else:
-        tmp = gy_norm(X, 0, 0, 1)
-        power = 10 ** norm_factor
-        return gy_norm(tmp ** power, 0, min_val, max_val)
-
-
-class Surf:
-    # adopted from TMCN projects
-    def __init__(self, model, al_dir = 2, al_tol = 0.5):
-        if isinstance(model, str):
-            model = read_vasp(model)
-
-        model = model.copy()  # protect original model
-        model.set_constraint(None)
-        model.set_tags(None)
-
-        coord_along_axis = model.get_positions()[:, al_dir]
-        t = {}
-        for z_sorted_index, atom_index in enumerate(np.argsort(coord_along_axis)):
-            t[z_sorted_index] = atom_index
-
-        al = 1
-        for i in sorted(t):
-            if i != 0 and coord_along_axis[t[i]] - coord_along_axis[t[i - 1]] > al_tol:
-                al += 1
-            model[t[i]].tag = al
-        self.atoms  = model
-        self.al_dir = al_dir
-        self.al_tol = al_tol
+try:
+    from ase.data.colors import cpk_colors, jmol_colors
+except ImportError:
+    from ase.data import cpk_colors, jmol_colors
 
 
 class Current:
@@ -139,38 +101,73 @@ class Current:
             self.grids = grids
             self.cur = cur
             self.cur_3d = cur_3d
+            self.filename = os.path.abspath(filename)
             # self.iso_max = np.min(cur_3d[0, :, :])
             # self.iso_min = np.max(cur_3d[nz - 1, :, :])
             self.iso_min = np.max(cur_3d[-1])
             self.iso_max = np.min(cur_3d[0])
 
+            if np.max(np.abs(self.cur_3d)) == 0:
+                raise IOError(f"Only 0 values in this current file: {filename}")
+            if self.iso_max < self.iso_min:
+                raise IOError("This current has a hole. Some grid has a larger minimum value than other grids' maximum")
 
-def seek_z_surface(cur_3d, isosurface, real=False, constant_current=True, interpolate="exponential"):
-    """
-    [input]
-    * cur_3d : np.array(shape=(nz, ny, nx)), which is whole current data
-    * isosurface : wanted isosurface values
-      |___ input this after selecting the possible range of insosurface values.
-    * real : if you want the real relative heights from z1 in Angstrom. else, index value will be used
-      |___ for the image generations, it doesn't matter.
-    * constant_current : Constant current mode if True, else constant height mode will be selected
+            self.topmost_atom = np.max(coord @ cell[:,2])
 
-    [output]
-    surface(2d data) of z values
-    """
+# 2022.02.06 changed (input current obj instead of current.cur_3d matrix)
+def get_surface_bskan(current:Current,
+                      isosurface,
+                      constant_current=True,
+                      return_index=False,
+                      interpolate="exponential",
+                      numeric_precision = 1e-4):
+    cur_3d = current.cur_3d
+    # cur_3d = current.cur_3d.copy() # Do we need to copy this? This will increase the memory consumption
+
+    _zmin = current.topmost_atom # should be minus value
+    _dz = current.cell[2,2]
+    if np.any(np.abs(current.cell[2,:2]) > numeric_precision):
+        raise IOError("When c lattice vector is not parallel to the cartesian z axis, it is not supported in BSKAN")
+        # Even bSKAN doesn't support this case.
+
+    dz = _dz/current.grids[-1] # increment
+    if not getattr(current, "_geometry_warning_emitted", False):
+        geometry_notes = []
+        if np.abs(_zmin + 0.5) > numeric_precision:
+            geometry_notes.append(
+                f"topmost atom z={_zmin:.9g} A (usual bSKAN STM reference: -0.5 A)"
+            )
+        if np.abs(dz-0.052918) > numeric_precision:
+            geometry_notes.append(
+                f"z-grid spacing={dz:.9g} A (usual bSKAN STM spacing: 0.052918 A)"
+            )
+        if geometry_notes:
+            source = os.path.basename(getattr(current, "filename", "CURRENT"))
+            print(
+                f"[WARN] CURRENT header check for {source}: "
+                + "; ".join(geometry_notes)
+                + ". Stored header values are used; verify the non-SCF STM tag "
+                "if these values are unintended."
+            )
+        current._geometry_warning_emitted = True
+
+    dz_shift = -_zmin
+    # ZGRID = np.linspace(_zmin, _zmin+_dz, current.grids[0])
+    # ZGRID -= current.topmost_atom # Make Topmost atom as zero
+
+
     if constant_current:
         # Return the matrix of height (Angstrom if real, else index)
-        if isosurface >= np.min(cur_3d[0]):  # Minimum of maximum isosurfaces
-            raise IOError(f"Isosurface should be less than {np.max(cur_3d)}")
-        elif isosurface <= np.max(cur_3d[-1]):  # Maximum of minimum isosurfaces
-            raise IOError(f"Isosurface should be larger than {np.min(cur_3d)}")
+        if isosurface >= current.iso_max: # when isosurface >= np.min(cur_3d[0]) # Minimum of maximum isosurfaces
+            raise IOError(f"Isosurface should be less than {current.iso_max}")
+        elif isosurface <= current.iso_min: # when isosurface <= np.max(cur_3d[-1]) # Maximum of minimum isosurfaces
+            # raise IOError(f"Isosurface should be larger than {np.min(cur_3d)}")
+            raise IOError(f"Isosurface should be larger than {current.iso_min}")
         else:
             pass
 
-        i_low = np.argmin(cur_3d > isosurface, axis=0) - 1
-        # In case of multiple occurences of the minimum values when using np.argmin,
-        # corresponding to the first occurence are returned. That's why we can just use the argmin here.
-
+        # i_low = np.argmin(cur_3d > isosurface, axis=0) - 1 # If there are two points, it should return upper one
+        i_low = cur_3d.shape[0] - np.argmax(cur_3d[::-1,:,:] > isosurface, axis=0) - 1
         indices = np.indices(i_low.shape)
 
         if interpolate == "exponential":
@@ -194,295 +191,435 @@ def seek_z_surface(cur_3d, isosurface, real=False, constant_current=True, interp
         else:
             raise NotImplementedError(f"{interpolate} method is not implemented. Available: exponential, linear, cubic")
 
-        if not real:
-            return z_index
+        z_index = np.asarray(z_index, dtype=float)
+        z_index = np.clip(z_index, 0, len(cur_3d) - 1)
+
+        if return_index:
+            result = z_index
+            return result
 
         else:
-            return z_index * 0.0529177 + 0.5  # distance from topmost z (Angstrom)
+    #         result = z_index * 0.0529177 + 0.5  # distance from topmost z (Angstrom)
+            result = z_index * dz + dz_shift
+            return result
 
     else:
         # constant height mode: return the matrix of current
-        if isosurface > len(cur_3d) * 0.0529177 + 0.5:
-            raise IOError(f"The height should be less than {len(cur_3d) * 0.0529177 + 0.5}")
-
-        elif isosurface < 0.5:
-            raise IOError(f"The height should be higher than 0.5 Angstrom")
-
+    #     if isosurface > len(cur_3d) * 0.0529177 + 0.5:
+    #         raise IOError(f"The height should be less than {len(cur_3d) * 0.0529177 + 0.5}")
+        if isosurface > _dz + dz_shift:
+            raise IOError(f"The height should be less than {_dz + dz_shift} Angstrom")
+            # Usually it should be 5.2918 + 0.5 or 5.344718 + 0.5 (depends on the number of grid, nz)
+        elif isosurface < dz_shift:
+            raise IOError(f"The height should be higher than {dz_shift} Angstrom")
+            # Usually it should be 0.5
         else:
             pass
 
-        if not real:
-            z_index = isosurface
-        else:
-            z_index = (isosurface - 0.5) / 0.0529177
-
-        i_low = np.floor(z_index)
+        z_index = (isosurface - dz_shift) / dz
+        i_low = np.array(np.floor(z_index), dtype=int)
+        i_low = np.clip(i_low, 0, len(cur_3d) - 2)
+        t = z_index - i_low
 
         if interpolate == "exponential":
             lower = np.log(cur_3d[i_low])
             upper = np.log(cur_3d[i_low + 1])
-            b = lower - upper
-            return np.exp(b * z_index - (i_low + 1) + upper)
+            # Exponential interpolation in log-current domain.
+            log_result = (1.0 - t) * lower + t * upper
+            result = np.exp(log_result)
+            return result
 
         elif interpolate == "cubic":
             cs = CubicSpline(range(len(cur_3d)), cur_3d, axis=0, extrapolate=False)
-            return cs(z_index)
+            result = cs(z_index)
+            return result
 
         elif interpolate == "linear":
             lin = interp1d([i_low, i_low + 1], (cur_3d[i_low], cur_3d[i_low + 1]), axis=0)
-            return lin(z_index)
+            result = lin(z_index)
+            return result
+        else:
+            raise NotImplementedError(f"{interpolate} method is not implemented. Available: exponential, linear, cubic")
+
+
+def _vasp_c_length(chgcar):
+    cell = AR.to_new_cell_onlycell(np.asarray(chgcar.cell, dtype=float))
+    c_length = float(cell[2][2])
+    if c_length <= 0:
+        raise ValueError("VASP volumetric c lattice length should be positive.")
+    return c_length
+
+
+def _vasp_z_axis(chgcar):
+    nz = int(np.asarray(chgcar.pot).shape[0])
+    c_length = _vasp_c_length(chgcar)
+    return np.arange(nz, dtype=float) * c_length / float(nz)
+
+
+def _vasp_topmost_atom(chgcar, topmost=None):
+    if topmost is not None:
+        return float(topmost)
+    if getattr(chgcar, "atoms", None) is None:
+        return 0.0
+    atoms = AR.to_new_cell(chgcar.atoms)
+    return float(np.max(atoms.get_positions()[:, 2]))
+
+
+def get_vasp_density_isorange(chgcar, topmost=None):
+    density_3d = np.asarray(chgcar.pot, dtype=float)
+    z_axis = _vasp_z_axis(chgcar)
+    topmost_atom = _vasp_topmost_atom(chgcar, topmost=topmost)
+    above = z_axis >= topmost_atom
+    if np.count_nonzero(above) < 2:
+        above = np.ones_like(z_axis, dtype=bool)
+    density_above = density_3d[above, :, :]
+    positive = density_above > 0.0
+    if not np.any(positive):
+        raise ValueError("VASP density isosurface range needs positive volumetric values.")
+    vacuum_floor = float(np.nanmax(np.where(positive[-1], density_above[-1], np.nan)))
+    reachable = np.nanmax(np.where(positive, density_above, np.nan), axis=0)
+    iso_ceiling = float(np.nanmin(reachable))
+    if not np.isfinite(vacuum_floor):
+        vacuum_floor = float(np.nanmin(density_above[positive]))
+    if not np.isfinite(iso_ceiling) or iso_ceiling <= vacuum_floor:
+        positive_values = density_above[positive]
+        vacuum_floor = float(np.nanpercentile(positive_values, 1.0))
+        iso_ceiling = float(np.nanpercentile(positive_values, 80.0))
+    if iso_ceiling <= vacuum_floor:
+        raise ValueError("Cannot determine a valid VASP density isosurface range.")
+    return vacuum_floor, iso_ceiling
+
+
+def get_surface_vasp(
+    chgcar,
+    isosurface,
+    constant_current=True,
+    return_index=False,
+    interpolate="exponential",
+    topmost=None,
+    numeric_precision=1e-4,
+):
+    density_3d = np.asarray(chgcar.pot, dtype=float)
+    if density_3d.ndim != 3:
+        raise IOError("VASP volumetric data should be a 3D grid.")
+
+    if np.any(np.abs(np.asarray(chgcar.cell, dtype=float)[2, :2]) > numeric_precision):
+        raise IOError("When c lattice vector is not parallel to the cartesian z axis, it is not supported in VASP")
+
+    topmost_atom = _vasp_topmost_atom(chgcar, topmost=topmost)
+    z_axis = _vasp_z_axis(chgcar)
+    dz = z_axis[1] - z_axis[0]
+
+    if constant_current:
+        iso_min, iso_max = get_vasp_density_isorange(chgcar, topmost=topmost_atom)
+        if isosurface >= iso_max:
+            raise IOError(f"Isosurface should be less than {iso_max}")
+        elif isosurface <= iso_min:
+            raise IOError(f"Isosurface should be larger than {iso_min}")
+        else:
+            pass
+
+        above = z_axis >= topmost_atom
+        if np.count_nonzero(above) < 2:
+            above = np.ones_like(z_axis, dtype=bool)
+
+        density_above = density_3d[above, :, :]
+        z_above = z_axis[above]
+        crossing = (density_above[:-1] >= isosurface) & (density_above[1:] < isosurface)
+        has_crossing = np.any(crossing, axis=0)
+        i_low = crossing.shape[0] - np.argmax(crossing[::-1, :, :], axis=0) - 1
+        indices = np.indices(i_low.shape)
+
+        lower = density_above[i_low, indices[0], indices[1]]
+        upper = density_above[i_low + 1, indices[0], indices[1]]
+        z_lower = z_above[i_low]
+        z_upper = z_above[i_low + 1]
+
+        with np.errstate(invalid="ignore", divide="ignore"):
+            if interpolate == "exponential":
+                log_lower = np.log(lower)
+                log_upper = np.log(upper)
+                b = log_lower - log_upper
+                z_result = z_upper - (np.log(isosurface) - log_upper) / b * (z_upper - z_lower)
+
+            elif interpolate == "linear":
+                b = lower - upper
+                z_result = z_upper - (np.abs(upper - isosurface)) / (np.abs(b)) * (z_upper - z_lower)
+
+            elif interpolate == "cubic":
+                cs = CubicSpline(range(len(density_above)), density_above, axis=0, extrapolate=False)
+                z_index = cs.solve(isosurface)
+                z_index = np.array(z_index)
+                z_index = np.array([ele[-1] for ele in z_index.flatten()]).reshape(i_low.shape)
+                z_result = z_above[0] + z_index * dz
+
+            else:
+                raise NotImplementedError(f"{interpolate} method is not implemented. Available: exponential, linear, cubic")
+
+        z_result = np.asarray(z_result, dtype=float)
+        z_result[~has_crossing] = np.nan
+
+        if return_index:
+            result = z_result / dz
+            return result
+
+        else:
+            result = z_result - topmost_atom
+            if not np.any(np.isfinite(result)):
+                raise ValueError("No VASP density isosurface crossing was found above the topmost atom.")
+            return result
+
+    else:
+        z_abs = topmost_atom + float(isosurface)
+        z_min = topmost_atom
+        z_max = float(z_axis[-1])
+        if z_abs > z_max:
+            raise IOError(f"The height should be less than {z_max - topmost_atom} Angstrom")
+        elif z_abs < z_min:
+            raise IOError("The height should be higher than 0.0 Angstrom")
+        else:
+            pass
+
+        z_abs = min(max(z_abs, 0.0), float(z_axis[-1]))
+        z_index = z_abs / dz
+        i_low = int(np.floor(z_index))
+        i_low = int(np.clip(i_low, 0, len(z_axis) - 2))
+        t = z_index - i_low
+
+        if return_index:
+            result = z_index
+            return result
+
+        if interpolate == "exponential":
+            lower = density_3d[i_low]
+            upper = density_3d[i_low + 1]
+            result = np.full_like(lower, np.nan, dtype=float)
+            positive = (lower > 0.0) & (upper > 0.0)
+            result[positive] = np.exp(
+                (1.0 - t) * np.log(lower[positive]) + t * np.log(upper[positive])
+            )
+            result[~positive] = (1.0 - t) * lower[~positive] + t * upper[~positive]
+            return result
+
+        elif interpolate == "cubic":
+            cs = CubicSpline(range(len(density_3d)), density_3d, axis=0, extrapolate=False)
+            result = cs(z_index)
+            return result
+
+        elif interpolate == "linear":
+            lin = interp1d([i_low, i_low + 1], (density_3d[i_low], density_3d[i_low + 1]), axis=0)
+            result = lin(z_index)
+            return result
 
         else:
             raise NotImplementedError(f"{interpolate} method is not implemented. Available: exponential, linear, cubic")
 
 
-def deprecated_seek_z(cur_z, incur, real=False):
-    """
-    * cur_z : np.array(shape=(nz,)), current values along Z axis
-      |___ input this after selecting x, y coordinate.
-           Don't input (nz, ny, nx) shape array
+get_surface_parchg = get_surface_vasp
 
-    * incur : wanted isosurface values
-      |___ input this after selecting the possible range of insosurface values.
 
-    * real : if you want the real relative height from z1 in Angstrom, we will calculate z_real = z_index * 0.0529177
-      |___ for the image generations, it doesn't matter.
-      |___ And increments of z is 0.0529177, which has been used in all BSKAN calculations.
-      |___ But for now, absolute z value from topmost surface is unclear... (Need to be updated)
-          ---> 어디가 시작점이고 어디가 종점인지는 잘 모르겠다. 0.5A부터 시작해서 5.7918 (0.5+5.2918)A 까지인가?
-          ---> CURRENT의 z vector가 주어져 있으니, 원자 위치를 대조하여 z방향의 절댓값으로 활용하면 될 것 같다!!
-    """
-    if cur_z[cur_z == incur].size > 0:
-        # if cur_z has incur value, we don't need interpolation
-        z_index = int(np.where(cur_z == incur)[0])
+def _match_cell_to_image(poscar, xmin, xmax, ymin, ymax, numeric_precision=1e-4):
+    h, w = ymax - ymin, xmax - xmin
+    lx, ly = np.diag(poscar.cell)[:2]
+    times_x, times_y = int(np.ceil(w / lx)), int(np.ceil(h / ly))
+    e_xmin = poscar.cell[1, 0] * times_y
+    shift_y = 0
+
+    if np.abs(e_xmin) < numeric_precision:
+        shift_x = 0
+    elif e_xmin > 0:
+        shift_x = -int(np.ceil(e_xmin / lx))
+        times_x += -shift_x
     else:
-        i_low = len(cur_z[(cur_z - incur) > 0]) - 1  # Since the current increases when z decreases
-        i_high = i_low + 1
-        b = (np.log(cur_z[i_low]) - np.log(cur_z[i_high]))
-        z_index = i_high - (np.log(incur) - np.log(cur_z[i_high])) / b
-    if not real:
-        return z_index
-    else:
-        return z_index * 0.0529177
+        shift_x = 0
+        times_x += int(np.ceil(abs(e_xmin) / lx))
+
+    if np.abs(xmin) > numeric_precision:
+        shift_x += int(np.floor(xmin / lx))
+
+    if np.abs(ymin) > numeric_precision:
+        shift_y += int(np.floor(ymin / ly))
+
+    translation = shift_x * poscar.cell[0] + shift_y * poscar.cell[1]
+
+    return times_x, times_y, translation
 
 
-def deprecated_seek_z_surface(cur_3d, incur, real=False):
-    """
-    [input]
-    * cur_3d : np.array(shape=(nz, ny, nx)), which is whole current data
-    * incur : wanted isosurface values
-      |___ input this after selecting the possible range of insosurface values.
-    * real : if you want the real relative heights from z1 in Angstrom. else, index value will be used
-      |___ for the image generations, it doesn't matter.
-    
-    [output]
-    surface(2d data) of z values
-    """
-    ny, nx = cur_3d.shape[1:]
-    surface = np.zeros((ny, nx))
-    for i in range(ny):
-        for j in range(nx):
-            surface[i][j] = deprecated_seek_z(cur_3d[:, i, j], incur, real=real)
-    return surface
+def _cut_position_to_image_bounds(
+    position,
+    xmin,
+    xmax,
+    ymin,
+    ymax,
+    numeric_precision=1e-4,
+):
+    """Return an XY point inside the half-open image bounds, or ``None``."""
+
+    x, y = np.asarray(position, dtype=float)[:2]
+    if x < xmin - numeric_precision or y < ymin - numeric_precision:
+        return None
+    if x > xmax + numeric_precision or y > ymax + numeric_precision:
+        return None
+
+    # xmin/ymin belong to the image. xmax/ymax are periodic duplicates of
+    # those edges and must be excluded so repeated atoms do not leak in.
+    if np.isclose(x, xmax, atol=numeric_precision, rtol=0.0):
+        return None
+    if np.isclose(y, ymax, atol=numeric_precision, rtol=0.0):
+        return None
+    if np.isclose(x, xmin, atol=numeric_precision, rtol=0.0):
+        x = float(xmin)
+    if np.isclose(y, ymin, atol=numeric_precision, rtol=0.0):
+        y = float(ymin)
+    return float(x), float(y)
 
 
-# plot guide atoms
-def vasp_to_bskan(str_vasp, current):
-    """
-    [input]
-    * str_vasp = ase.Atoms, vasp structure (POSCAR, ASAMPLE)
-    * current = Current instance
-    
-    [output]
-    * str_bskan : ase.Atoms, rectangular structure written in CURRENT file, which is the output file of bSKAN
-    * ctype : quadratic / hexagonal / oblique
-    """
-    if isinstance(str_vasp, str):
-        str_vasp = read_vasp(str_vasp)
-    # poscar_cellpar = str_vasp.get_cell_lengths_and_angles() # deprecated from ASE
-    poscar_cellpar = str_vasp.cell.cellpar()
-    if np.round(poscar_cellpar[-1], 4) in [60., 120.]:
-        # sometimes... 119.99999999991849 degree arises
-        ctype = "hexagonal"
-        A1, A2 = str_vasp.cell[0], str_vasp.cell[1]
-        AR1 = np.linalg.norm(A1 + A2)
-        AR2 = np.linalg.norm(A1 - A2)
-        if np.round(AR1, 4) == np.round(current.cellpar[0], 4):
-            X = np.array([[1, 1, 0], [1, -1, 0], [0, 0, 1]])
-            # AR1 becomes new axis
+def plot_atoms(poscar, xmax, ymax,
+               xmin=0, ymin=0,
+               ax=None,
+               top_n_layers=1,
+               al_tol=0.5,
+               diagonal_transform_for_hexagonal=True,
+               numeric_precision=1e-6,
+               atoms_info="ASE-jmol",
+               radii_type="default",
+               radii_marker_scale=10
+               ):
+    if atoms_info.strip().upper().startswith("ASE"):
+        if radii_type == "default":
+            radii_type = "covalent"
+        if atoms_info.strip().upper() == "ASE-CPK":
+            colors = cpk_colors
+            #        [O] vdw_radii / covalent_radii read from ase.data
+            #        [X] There are no ionic_radii or atomic_radii in ase.data
+            atoms_info = "ASE"
+            radii_dict = dict(vdw_radii=vdw_radii, covalent_radii=covalent_radii)
+            if radii_type.strip().upper()[0] not in ["C", "V"]:
+                raise IOError(f"{radii_type} not provided in ase.data")
         else:
-            X = np.array([[1, -1, 0], [1, 1, 0], [0, 0, 1]])
-            # AR2 becomes new axis        
-        str_bskan = make_supercell(str_vasp, X)
-    elif np.round(poscar_cellpar[-1], 4) == 90:
-        ctype = "quadratic"
-        str_bskan = AR.to_new_cell(str_vasp.copy())
+            # atoms_info.strip().upper() == "ASE-JMOL"
+            colors = jmol_colors
+            #        [O] vdw_radii / covalent_radii read from ase.data
+            #        [X] There are no ionic_radii or atomic_radii in ase.data
+            atoms_info = "ASE"
+            radii_dict = dict(vdw_radii=vdw_radii, covalent_radii=covalent_radii)
+            if radii_type.strip().upper()[0] not in ["C", "V"]:
+                raise IOError(f"{radii_type} not provided in ase.data")
+    elif atoms_info.strip().upper().startswith("V"):
+        if radii_type == "default":
+            radii_type = "atomic"
+        atoms_info = "VESTA"
+        colors = vesta_colors
+        radii_dict = dict(vdw_radii=vesta_vr, atomic_radii=vesta_ar, ionic_radii=vesta_ir)
     else:
-        ctype = "oblique"
-        mono_l = AR.to_new_cell(str_vasp)
-        str_bskan = mono_l.copy()
-        x, y, z = mono_l.get_cell()[0, 0], mono_l.get_cell()[1, 1], mono_l.get_cell()[2, 2]
-        rectangular_cell = np.diag((x, y, z))
-        rectangular_coord = mono_l.get_positions().copy()
-        for i in rectangular_coord:
-            if i[0] < 0:  # for obtuse angle (angle>90)
-                i[0] += x
-            if i[0] > x:  # for acute angle (angle<90)
-                i[0] -= x
-        str_bskan.set_cell(rectangular_cell)
-        str_bskan.set_positions(rectangular_coord)
-    return str_bskan, ctype
+        pass
+        # TODO: When the data is provided manually.
+    #         atoms_info_path = atoms_info
+    #         atoms_info = "VESTA"
+    #         colors, vdw_radii, covalent_radii, ionic_radii = read_vesta_ini()
 
-
-# ----------------------------------------------------------------------------------------------------------------------------
-def main(current, bskan_input, image_dir='.', save=True, ax_stm=None,
-         plot_atoms = False, plot_repeat = False, blur = False):
-    """
-    * current : Current instance
-    * bskan_input : Bskan_input instance (in input.py)
-    * image_dir : where to store the images
-    * save : save file
-    * ax_stm : plot on already made matplotlib axes
-    * plot_atoms : plot atom positions
-    * plot_repeat : If True, plots repeated images based on bskan_input.iteration
-    * blur : If True, gaussian filter will be applied as bskan_input.blur_sigma
-    """
-    if save:
-        os.chdir(image_dir)
+    if radii_type.strip().lower().startswith("i"):
+        radii = radii_dict.get("ionic_radii")
+    elif radii_type.strip().lower().startswith("c"):
+        radii = radii_dict.get("covalent_radii")
+    elif radii_type.strip().lower().startswith("v"):
+        radii = radii_dict.get("vdw_radii")
+    elif radii_type.strip().lower().startswith("a"):
+        radii = radii_dict.get("atomic_radii")
     else:
-        data_to_return = []
-
-    iso_data = [bskan_input.iso] if type(bskan_input.iso) in [int, float] else bskan_input.iso
-    for iso in iso_data:
-        real_x, real_y = current.cellpar[:2]
-        try:
-            Z = seek_z_surface(current.cur_3d, iso)
-        except IOError:
-            print(f"{iso} is out of range")
-            continue
-        brightness = bskan_input.brightness
-        resolution = bskan_input.contour_resolution
-        norm_factor = bskan_input.contrast
-        cmap = bskan_input.cmap
-
-        if not plot_repeat:
-            # x = np.linspace(0, real_x, current.grids[0]+1)[:-1]
-            # y = np.linspace(0, real_y, current.grids[1]+1)[:-1]
-            x = np.linspace(0, real_x, current.grids[0])
-            y = np.linspace(0, real_y, current.grids[1])
-            X, Y = np.meshgrid(x, y)
-
+        if atoms_info.startswith("ASE"):
+            raise IOError(f"{radii_type} not supported. Choose one between covalent radii or vdw radii for ASE type")
         else:
-            nx, ny = bskan_input.iteration
-            X, Y, Z = post_processing.array_iter(Z, nx = nx, ny = ny,
-                                                 gamma = bskan_input.gamma, real_x = real_x, real_y = real_y)
+            raise IOError(
+                f"{radii_type} not supported. Choose one among ionic radii, atomic radii, vdw radii for VESTA type")
 
-        if blur:
-            Z = ndimage.gaussian_filter(Z, sigma=bskan_input.blur_sigma, order=0)
+    if radii is None:
+        if atoms_info.startswith("ASE"):
+            print("Fallback to ase covalent radii")
+            radii = radii_dict.get("covalent_radii")
+        elif atoms_info.startswith("V"):
+            print("Fallback to VESTA atomic radii")
+            radii = radii_dict.get("atomic_radii")
 
-        if not save:
-            data_to_return.append([X, Y, Z])
+    assert xmax > xmin, f"xmax({xmax}) should be larger than xmin({xmin})."
+    assert ymax > ymin, f"ymax({ymax}) should be larger than ymin({ymin})."
+    #    poscar = AR.to_new_cell(poscar) # This should be checked!
+    if diagonal_transform_for_hexagonal:
+        if np.abs(np.diff(poscar.cell.cellpar()[:2])[0]) < numeric_precision:
+            gamma = poscar.cell.cellpar()[-1]
+            if np.abs(gamma - 60) < numeric_precision or np.abs(gamma - 120) < numeric_precision:
+                poscar = AR.to_new_cell(make_supercell(poscar, np.array([[1, -1, 0], [1, 1, 0], [0, 0, 1]])))
 
-        (brighter, darker) = (0, -brightness) if brightness < 0 else (brightness, 0)
+    times_x, times_y, translation = _match_cell_to_image(poscar, xmin, xmax, ymin, ymax, numeric_precision)
 
-        if ax_stm is None:
-            ax_stm = plt.figure(figsize=(real_x, real_y)).gca()
+    surf = AR.Surf(poscar, al_tol = al_tol)
+    taglist = sorted(list(range(1, len(surf.dheights) + 1)))
+    for i in range(len(taglist)-top_n_layers):
+        surf.remove_layer(1)
+    surf.sup_xy(times_x + 1, times_y + 1)
+    surf.atoms.translate(translation)
 
-        ax_stm.contourf(X, Y, gy_norm(Z, norm_factor = norm_factor), cmap = cmap,
-                        levels=np.linspace(0 - brighter, 1 + darker, int(resolution * (1 + abs(brightness)))))
-        ax_stm.axis("off")
-        ax_stm.set_aspect("equal")
+    if ax is None:
+        ax = plt.figure().gca()
 
-        if not plot_repeat:
-            ax_stm.set_xlim(0, real_x)
-            ax_stm.set_ylim(0, real_y)
-        else:
-            ax_stm.set_xlim(0, real_x*nx)
-            ax_stm.set_ylim(0, real_y*ny)
+    selected_taglist = sorted(np.unique(surf.atoms.get_tags()))[-top_n_layers:]
+    for st in selected_taglist:
+        model = surf.atoms[surf.atoms.get_tags() == st]
+        for atom in model:
+            plot_position = _cut_position_to_image_bounds(
+                atom.position,
+                xmin=xmin,
+                xmax=xmax,
+                ymin=ymin,
+                ymax=ymax,
+                numeric_precision=numeric_precision,
+            )
+            if plot_position is None:
+                continue
+            _c = colors[atom.number]
+            _r = radii[atom.number]
+            ax.plot(*plot_position, c=_c, ms=_r * radii_marker_scale,
+                    marker="o")  # TODO: 나중에 원소 별로 한 번에 plot하면 좋긴 할텐데 ㅎ.. 귀찮네
+    return ax
 
-        if save:
-            plt.savefig(f"{iso}.png", dpi=300, bbox_inches='tight', pad_inches=0)
-            plt.close()
-            ax_stm = None
 
-        if plot_atoms:
-            if bskan_input.poscar is not None:
-                radius_type = bskan_input.radius_type
-                size_ratio = bskan_input.size_ratio
-                size_and_color = dict()
-                n_layers_for_plot = bskan_input.layers
+def plot_cell(poscar, xmax, ymax, xmin=0, ymin=0, ax=None, diagonal_transform_for_hexagonal=True,
+              numeric_precision=1e-6, **kwargs):
+    if ax is None:
+        ax = plt.figure().gca()
+    assert xmax > xmin, f"xmax({xmax}) should be larger than xmin({xmin})."
+    assert ymax > ymin, f"ymax({ymax}) should be larger than ymin({ymin})."
+    poscar = AR.to_new_cell(poscar)  # This should be checked!
+    transformed = False
+    if diagonal_transform_for_hexagonal:
+        if np.abs(np.diff(poscar.cell.cellpar()[:2])[0]) < numeric_precision:
+            gamma = poscar.cell.cellpar()[-1]
+            if np.abs(gamma - 60) < numeric_precision or np.abs(gamma - 120) < numeric_precision:
+                transformed = True
+                poscar = AR.to_new_cell(make_supercell(poscar, np.array([[1, -1, 0], [1, 1, 0], [0, 0, 1]])))
 
-                module_dir = os.path.dirname(os.path.abspath(__file__))
-                with open(os.path.join(module_dir, 'elements_vesta.ini'), 'r') as vesta_data:
-                    for line in vesta_data:
-                        index, symbol, a_r, v_r, i_r, color_r, color_g, color_b = line.split()
-                        if radius_type == "ATOMIC":
-                            radius = float(a_r)
-                        elif radius_type == "VDW":
-                            radius = float(v_r)
-                        else:
-                            # ionic radius
-                            radius = float(i_r)
-                        color = tuple(map(lambda x: float(x), (color_r, color_g, color_b)))
-                        size_and_color[symbol] = (radius, color)
+    times_x, times_y, translation = _match_cell_to_image(poscar, xmin, xmax, ymin, ymax, numeric_precision)
+    a_vec = poscar.cell[0][:2]
+    b_vec = poscar.cell[1][:2]
+    trans = translation[:2]
 
-                if bskan_input.atom_addinfo is not None:
-                    # with open(bskan_input.atom_addinfo, 'r') as addinfo:
-                    for line in bskan_input.atom_addinfo:
-                        symbol, radius, c_r, c_g, c_b = line.split()
-                        color_temp = (float(c_r) / 255, float(c_g) / 255, float(c_b) / 255)
-                        size_and_color[symbol] = (float(radius), color)
+    if transformed:
+        for i_nx in range(-times_y, times_x):
+            # plot (1,1,0) direction
+            origin = i_nx * a_vec + trans
+            ax.plot(*np.array([origin, origin + (a_vec + b_vec) * times_y]).T, **kwargs)
+        for i_ny in range(1, times_x + times_y):
+            # plot (1,-1,0) direction
+            origin = i_ny * a_vec + trans
+            ax.plot(*np.array([origin, origin + (-a_vec + b_vec) * times_y]).T, **kwargs)
 
-                if plot_repeat:
-                    atoms_for_plot = make_supercell(bskan_input.poscar, np.diag((nx+1+ny, ny+1, 1)))
-                    if np.round(atoms_for_plot.cell.cellpar()[-1], 4) in [60., 120.]:
-                        atoms_for_plot = make_supercell(vasp_to_bskan(bskan_input.poscar, current)[0],
-                                                        np.diag((nx+1+ny, ny+1, 1)))
-                else:
-                    # atoms_for_plot = bskan_input.poscar.copy()
-                    atoms_for_plot = vasp_to_bskan(bskan_input.poscar, current)[0]
-
-                surf = Surf(atoms_for_plot, al_tol=0.5)
-                surf = AR.to_new_cell(sort(surf.atoms, tags=surf.atoms.get_tags()))
-                if plot_repeat:
-                    surf.translate(-bskan_input.poscar.cell[0] * (ny+1))
-                plot_layers = AR.species(surf.get_tags(), overall=True)[-1:-n_layers_for_plot - 1:-1]
-
-                if save:
-                    if not os.path.isdir("plot_guide_atoms"):
-                        os.mkdir("plot_guide_atoms")
-                    os.chdir("plot_guide_atoms")
-                    ax_plot_atoms = plt.figure(figsize=(real_x, real_y)).gca()
-                    ax_plot_atoms.contourf(X, Y, gy_norm(Z, norm_factor=norm_factor), cmap = cmap,
-                                           levels=np.linspace(0 - brighter, 1 + darker,
-                                                              int(resolution * (1 + abs(brightness)))))
-
-                for atom in surf:
-                    if atom.tag in plot_layers:
-                        size, color_temp = size_and_color[atom.symbol]
-                        plot_coord = atom.position
-                        if save:
-                            ax_plot_atoms.plot(plot_coord[0], plot_coord[1],
-                                               color = color_temp, marker = ".", ms = size_ratio * size)
-                            ax_plot_atoms.axis("off")
-                            ax_plot_atoms.set_aspect("equal")
-                        else:
-                            ax_stm.plot(plot_coord[0], plot_coord[1],
-                                        color = color_temp, marker = ".", ms = size_ratio * size)
-
-                if not plot_repeat:
-                    plt.xlim(0, real_x)
-                    plt.ylim(0, real_y)
-                else:
-                    plt.xlim(0, real_x * nx)
-                    plt.ylim(0, real_y * ny)
-
-                if save:
-                    plt.savefig(f"{iso}_guide.png", dpi=300, bbox_inches='tight', pad_inches=0)
-                    os.chdir("../")
-                    plt.close()
-
-    if save:
-        os.chdir("../")
     else:
-        return data_to_return
+        for i_nx in range(times_x + 1):
+            # plot b lattices
+            origin = i_nx * a_vec + trans
+            ax.plot(*np.array([origin, origin + b_vec * times_y]).T, **kwargs)
+        for i_ny in range(times_y + 1):
+            # plot a lattices
+            origin = i_ny * b_vec + trans
+            ax.plot(*np.array([origin, origin + a_vec * times_x]).T, **kwargs)
+    return ax

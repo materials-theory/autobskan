@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+docs/_build/
+
+# Build and environments
+build/
+dist/
+.build/
+.venv/
+venv/
+
+# Editors and notebooks
+.DS_Store
+.ipynb_checkpoints/
+.virtual_documents/
+.idea/
+.vscode/
+
+# AutoBSKAN runtime output
+.autobskan_uploads/
+**/.autobskan_uploads/
+__status__/
+*_images/
+1_nonscf/
+2_bskan/
+3_result/
+
+# Local development archives retained outside the distributable source tree
+developing.../
+prev_version/
+prev_version_gyb/
+to_AI/

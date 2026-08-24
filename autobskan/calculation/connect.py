@@ -8,6 +8,10 @@ from ase import Atoms, Atom
 from ase.geometry import get_layers
 from ase.calculators.vasp.create_input import GenerateVaspInput as GVI
 
+from autobskan.calculation.symmetry_precheck import (
+    validate_existing_scf_for_bskan,
+    write_bskan_asample,
+)
 from autobskan.io.input import Options
 
 
@@ -322,32 +326,7 @@ def outcar_to_kpoints(OUTCAR):
 
 
 def contcar_to_asample(CONTCAR):
-    poscar_fr = open(CONTCAR, 'r')
-    poscar_line = poscar_fr.readlines()
-    poscar_fr.close()
-    poscar_fw = open('ASAMPLE','w')
-    line_count = 1
-    for line in poscar_line:
-        if len(line) > 1:
-            if line_count <= 5:
-                poscar_fw.write(line)
-                line_count += 1
-            elif line_count == 6:
-                line_count += 1
-            elif line_count == 7:
-                poscar_fw.write(line)
-                line_count += 1
-            elif line_count == 8:
-                if line.split(maxsplit=len(line))[0] == 'S':
-                    poscar_fw.write(line)
-                    line_count += 1
-                else :
-                    poscar_fw.write("Selective dynamics\n")
-                    poscar_fw.write(line)
-                    line_count += 1
-            elif line_count == 9:
-                poscar_fw.write(line)
-    poscar_fw.close()
+    return write_bskan_asample(CONTCAR, "ASAMPLE", force=True)
 
 
 def bias_directory(inp, model, STM, until_tip, th_for_chen=False):
@@ -431,6 +410,7 @@ def ctoc():
 def main(bskan_input = "bskan.in"):
 
     inp = Options(bskan_input)
+    validate_existing_scf_for_bskan(inp.option_dict['SCF_PATH'])
 
     ##_current_pwd_##
 

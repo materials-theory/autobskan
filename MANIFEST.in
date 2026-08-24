@@ -1,1 +1,11 @@
-include autobskan/image/elements_vesta.ini
+include README.rst
+include LICENSE
+include CITATION.cff
+include CHANGELOG.md
+include requirements.txt
+recursive-include autobskan *.ini *.in
+recursive-include tests *.py
+prune build
+prune dist
+global-exclude *.py[cod]
+global-exclude .DS_Store

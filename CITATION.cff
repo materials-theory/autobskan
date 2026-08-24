@@ -1,19 +1,34 @@
-cff-version: 1.0.0
-message: "If you use this software, please cite it as below."
+cff-version: 1.2.0
+message: "If you use AutoBSKAN in research, please cite the archived software release."
+title: "AutoBSKAN: automated bSKAN workflows and STM analysis"
+type: software
+abstract: >-
+  AutoBSKAN prepares bSKAN scanning-tunnelling-microscopy calculations and
+  analyses bSKAN CURRENT and VASP volumetric output.
 authors:
-  - family-names: Giyeok
-    given-names: Lee
-    orcid: https://orcid.org/0000-0003-1130-7668
-  - family-names: Joonsuk
-    given-names: Cheung
-    orcid: https://orcid.org/0009-0004-6102-9533
-  - family-names: Jae-Hyeok
-    given-names: Ko
-    orcid: https://orcid.org/0000-0003-0079-7200
-  - family-names: Aloysius
-    given-names: Soon
-    orcid: https://orcid.org/0000-0002-6273-9324
-title: "Autobskan"
-version: 1.0.0
-doi: 10.5281/zenodo.10791702
-date-released: 2024-12-31
+  - family-names: "Lee"
+    given-names: "Giyeok"
+    orcid: "https://orcid.org/0000-0003-1130-7668"
+  - family-names: "Cheung"
+    given-names: "Joonsuk"
+    orcid: "https://orcid.org/0009-0004-6102-9533"
+  - family-names: "Ko"
+    given-names: "Jae-Hyeok"
+    orcid: "https://orcid.org/0000-0003-0079-7200"
+  - family-names: "Soon"
+    given-names: "Aloysius"
+    orcid: "https://orcid.org/0000-0002-6273-9324"
+version: "1.3.4"
+doi: "10.5281/zenodo.10791702"
+date-released: "2026-08-25"
+license: MIT
+repository-code: "https://github.com/materials-theory/autobskan"
+url: "https://github.com/materials-theory/autobskan"
+keywords:
+  - scanning tunnelling microscopy
+  - density functional theory
+  - VASP
+  - bSKAN
+  - surface science
+  - apparent barrier height
+  - local work function

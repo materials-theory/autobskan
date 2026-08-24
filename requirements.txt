@@ -1,6 +1,7 @@
-scipy>=1.5.2
-ase>=3.19.0
-matplotlib>=3.3.2
-numpy>=1.19.2
-Pillow>=7.2.0
+numpy
+scipy
+ase
+spglib>=2.0
+matplotlib
+Pillow
 tqdm
