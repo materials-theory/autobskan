@@ -1,6 +1,3 @@
-AutoBSKAN
-=========
-
 .. image:: https://github.com/materials-theory/autobskan/actions/workflows/ci.yml/badge.svg
    :target: https://github.com/materials-theory/autobskan/actions/workflows/ci.yml
    :alt: Continuous integration status
@@ -9,237 +6,143 @@ AutoBSKAN
    :target: LICENSE
    :alt: MIT license
 
-AutoBSKAN is a Python workflow and interactive analysis application for
-simulated scanning tunnelling microscopy (STM). It connects VASP and bSKAN
-calculation output to reproducible surface maps, apparent-barrier analysis,
-finite-height local work-function analysis, overlays, line profiles, Fourier
-analysis, and publication-oriented export.
+=========================
+(1) Installation
+=========================
 
-Statement of need
------------------
+Using pip command to download autobskan ::
 
-STM simulation workflows often combine electronic-structure output, a separate
-tunnelling-current code, ad hoc conversion scripts, and plotting notebooks.
-That fragmentation makes it difficult to reproduce grid conventions, height
-references, symmetry handling, and figure settings. AutoBSKAN provides one
-tested interface for preparing bSKAN calculations and analysing native bSKAN
-``CURRENT`` files or VASP volumetric files without changing their physical XY
-sampling during interactive display optimisation.
+  $ pip install autobskan
 
-The package does not distribute VASP or bSKAN. Calculation automation requires
-separately installed and licensed executables; analysis of existing files does
-not.
 
-Capabilities
-------------
+Or download via github, and unzip it. ::
 
-* bSKAN ``CURRENT`` and VASP ``PARCHG``, ``LOCPOT``, and ``CHGCAR`` input.
-* Constant-current and constant-height STM maps.
-* Apparent barrier height, :math:`\Phi_{\rm app}`, from the fitted logarithmic
-  decay of ``CURRENT`` or ``PARCHG``.
-* Finite-height local work function, :math:`\Phi_{\rm loc}(x,y;z_0)`, from
-  ``LOCPOT`` referenced to the Fermi level.
-* Symmetry pre-check and origin-shift proposal before an SCF calculation.
-* Interactive atom and unit-cell overlays, line profiles, FFT, Gaussian
-  filtering, manual colour limits, and independent high-resolution export.
-* Chunked browser upload for large volumetric files and cached full-resolution
-  analysis after the initial parse.
+  $ pip install -r requirements.txt
 
-Scientific quantities
----------------------
+  $ python setup.py install
 
-AutoBSKAN keeps two quantities that are sometimes both called a local work
-function separate:
 
-.. math::
 
-   \Phi_{\rm app} = 0.952495\left(\partial_z \ln Q\right)^2,
 
-where ``Q`` is the bSKAN current or VASP partial charge density under the
-implemented decay convention, and
 
-.. math::
 
-   \Phi_{\rm loc}(x,y;z_0) = V_{\rm LOCPOT}(x,y,z_0) - E_{\rm F}.
+==================================================
+(2) Explanation of bskan.in input file.
+==================================================
 
-``PARCHG`` decay is therefore reported as :math:`\Phi_{\rm app}`, never as
-:math:`\Phi_{\rm loc}`. The latter requires ``LOCPOT`` and an explicit Fermi
-level or a sibling ``OUTCAR``. See `Scientific scope`_ for assumptions and
-limitations.
+``MODE`` = CALCULATION / **IMAGE** / POST_PROCESSING
 
-Installation
-------------
+  [tip] you can also type ca/im/po
 
-AutoBSKAN requires Python 3.10 or newer. Install the published package with::
 
-  python -m pip install autobskan
 
-For an editable source installation::
 
-  git clone https://github.com/materials-theory/autobskan.git
-  cd autobskan
-  python -m pip install -e ".[test]"
+------------------------------------------------
+a. Calculation Parts (Not supported yet)
+------------------------------------------------
 
-Static image export uses ``plotly>=6.1,<6.8`` and ``kaleido>=1.0,<2``. This
-compatibility range avoids the Plotly 6.8 header API, which requires Kaleido
-1.3 or newer. Kaleido 1 also needs a local Chrome or Chromium installation;
-``plotly_get_chrome`` installs a compatible browser when required.
+``VASP`` = command of executing VASP binary
 
-Interactive GUI
----------------
+``BSKAN`` = command of excuting BSKAN binary
 
-Start the local application with::
+  (ex. mpirun -np 8 ~/programs/VASP/norm_std.x > stdout.log)
 
-  autobskan-gui
+``METHOD`` = TH (Tersoff Hamann) / CHEN / BARDEEN (Numerical)
 
-The version badge identifies the running package. Select the data source,
-simulation, and volumetric file in the **Data** and **Model** tabs. VASP files
-provide their embedded structure automatically; an explicitly selected
-POSCAR/CONTCAR can replace it after confirmation.
+  [tip] you can also write th(or te) / ch / ba(or nu)
 
-Slider changes render live, while adjacent numeric fields allow exact values.
-The fast and balanced display modes reduce only the number of browser display
-pixels. Line analysis and export continue to use the full rendered scalar
-field. Manual ``vmin``/``vmax`` applies to the map, colour scale, and line
-profile; returning to automatic range re-enables brightness.
+``BIAS`` = start_end_steps & value
 
-Useful launch options are::
+  1) If you put separator "_", it is regarded as MIN_MAX_INCREMENTS to make list of input bias values.
+       For example, -0.01_0.03_0.02 will be regarded as [-0.01, 0.01, 0.03].
+       
+  2) If you put separator "&", it is regarded as ingredients of lists.
+       For example, 0.02 & 0.05 will be regarded as [0.02, 0.05].
+       
+  3) Or you can write the combination of 1) and 2).
+       For example, "-0.05_0.01_0.02 & 0.00" will give you array([-0.05, -0.03, -0.01, 0., 0.01])
+       
+  +) Space will be ignored. Do not worry about this.
+ 
 
-  autobskan-gui --host 127.0.0.1 --port 8050
-  autobskan-gui --no-browser
-  autobskan-gui --debug
-  autobskan-gui --version
+------------------------
+b. Image Parts
+------------------------
 
-The server is intended for local use. Closing the final GUI window stops the
-server. Do not expose it on an untrusted network: the local-path field is
-designed to read files available to the launching user.
+``CURRENT`` = filename of CURRENT. [Default = CURRENT]
 
-Pre-check before SCF
---------------------
+  * For filenames, multiple choices are also possible. (Must be divided by "&")
+  * Or, following Regular expressions. (ex. '\*current' indicates all files which have 'current' words in the last.)
 
-Run the visible four-stage bSKAN symmetry check before starting SCF::
 
-  autobskan pre-check POSCAR
+``ISO_AUTO`` = True / False / **LOGSCALE** [Default = LOGSCALE]
 
-The command reports one of four outcomes:
+  [tip] you can also type t/f/l
+  
+``ISO`` = value(s) / numbers of wanted isosurface values.
 
-``READY``
-  No origin shift is needed. ``ASAMPLE`` is written in VASP 4 style, with
-  Selective dynamics and Direct coordinates.
+  1) When ISO_AUTO = True, ISO will be the number of isosurface values. [Default = 5]
+                     * ex) generate 5 images when ISO = 5
+                     
+  2) When ISO_AUTO = False, ISO will be the exact value of isosurface. (Same format of BIAS input)
+                     * ex1) 2500_1e4_2500 will be regarded as [2500., 5000., 7500., 10000.]
+                     * ex2) 1e3 & 1e4 & 1e5 will be regarded as [1000., 10000., 100000.]
+                     
+  3) When ISO_AUTO = LOGSCALE, ISO will be possible 10^x value
+                    * here, x will be set automatically from minimum to maximum. (2020.08.29 updated)
+                    * +) input ISO value will be ignored
 
-``SHIFT_REQUIRED``
-  ``POSCAR-autobskan_shifted.vasp`` is written using
-  ``ase.Atoms.translate()`` and validated again. Start SCF from this structure;
-  do not reuse the previous ``WAVECAR``, ``CHGCAR``, or ``WAVSAMPLE``.
+``CMAP`` = name of colormap [Default = afmhot]
 
-``UNSAFE``
-  No single global origin shift removes all detected translations. Use a
-  symmetry-free/full-Brillouin-zone workflow or correct the bSKAN symmetry
-  expansion. No output structure is written.
+  Colomaps are following matplotlib.pyplot cmaps
 
-``UNSUPPORTED_GEOMETRY``
-  The ``c`` lattice vector is not perpendicular to the ``ab`` plane, so the
-  current pre-check cannot guarantee symmetry safety. No output is written.
+``CONTRAST`` = 0
 
-Use ``--quiet`` for the final decision only. Calculation automation repeats the
-check against an existing SCF and refuses post-SCF shifting.
+  * normalization factor (float). 0 is default, which is linear normalization.
 
-Calculation automation
-----------------------
+  * value from -1 to 1 is recommended, and usually absolte value within 0.2 is enough.
+  
+``BRIGHTNESS``  = -1 ~ 0[Default] ~ 1
 
-After a ``READY`` pre-check, configure the external executables and calculation
-directories in ``bskan.in``::
+``CONTOUR_RESOLUTION`` = 200
 
-  TASK = CALCULATION
-  VASP_COMMAND = mpirun -np 8 /path/to/vasp_std
-  BSKAN_COMMAND = mpirun -np 8 /path/to/bskan
-  SCF_PATH = /absolute/path/to/scf
-  TIP_PATH = /absolute/path/to/tip
-  METHOD = CHEN
-  BIAS = -0.5_0.5_0.5
+``EXT`` = Wanted extension type or raw_images. [Default = png]
 
-``METHOD`` accepts ``TH``, ``CHEN``, or ``BARDEEN``. ``BIAS`` accepts one
-value, comma-separated values, or ``start_end_step`` notation. AutoBSKAN
-prepares the non-SCF and bSKAN directories, tracks completed stages, and writes
-resulting ``CURRENT`` files under ``3_result``.
+``POSCAR`` = filename of structure file. vasp5 POSCAR format is supported.
 
-For Chen calculations, the ``CURRENT`` header and body are generated directly
-from ``ASAMPLE``, ``CURSAVE``, and ``INSCAN`` using bSKAN-compatible grid,
-spacing, and numeric formatting. A preliminary Tersoff-Hamann run is therefore
-not required solely to provide the header. Use absolute ``SCF_PATH`` and
-``TIP_PATH`` values so the workflow remains independent of the launch directory.
+``ATOM_ADDINFO`` = If you want manual setting of Atomic size and colors, you can put the filename with atomic informations.
 
-Image CLI
----------
+  * Default setting is identical to default setting of VESTA program
+  
+  * For example, if you want to change the size and color of hydrogen atom, to 1.5 Angstrom and white color,
+  
+  * You can set ATOM_ADDINFO = element.txt in bskan.in which includes information of H by following commands,
+  
+  * $echo 'H 1.5 255 255 255' > elements.txt
+  
+``LAYERS`` = number of layers to plot from surface. [Default = 1]
 
-The non-interactive image path reads ``bskan.in``::
+``RADIUS_TYPE`` = **atomic** / van der Waals / ionic radius [Default = ATOMIC]
 
-  TASK = IMAGE
-  SIMULATION = STM
-  INPUT_SOURCE = BSKAN
-  CURRENT = CURRENT
-  IMAGE_MODE = CONSTANT CURRENT
-  ISO_AUTO = FALSE
-  ISO = 1e-5
+  [tip] you can also type a / v / i
+  
+``SIZE_RATIO`` = marker size ratio of atoms [Default = 30]
 
-Run it with::
 
-  autobskan --input bskan.in
+------------------------
+c. Postprocessing Parts
+------------------------
 
-For batch STM rendering, ``ISO_AUTO = TRUE`` is equivalent to ``LOGSCALE`` and
-uses valid powers of ten. ``ISO_AUTO = LINEAR`` instead uses ``ISO`` evenly
-spaced current values per CURRENT file. GUI exports write source-specific
-``CURRENT`` or ``VOLUME`` entries and accessible structure paths as absolute
-paths.
+``POST_PROCESSING`` = Precede to the post_processing process or not. [Default = FALSE]
 
-For :math:`\Phi_{\rm app}`, set ``SIMULATION = PHI_APP`` and optionally set
-``FIT_RADIUS`` (default ``0.5`` A). For :math:`\Phi_{\rm loc}`, use
-``SIMULATION = LWF``, ``INPUT_SOURCE = VASP``, ``VOLUME = LOCPOT``, and either
-``FERMI_LEVEL`` or a sibling ``OUTCAR``. The complete option list is in the
-`CLI reference`_.
+``ITERATION`` = nx, ny [Default = 4, 4] # iterations along x / y axis
 
-Documentation
--------------
+``BLUR_METHOD`` = GAUSSIAN [Default] # For now, there is only one choice (Gaussian).
 
-* `Documentation index`_
-* `GUI guide`_
-* `CLI reference`_
-* `Scientific scope`_
-* `Python API`_
+``BLUR_SIGMA`` = Postive number [Default = 10]
 
-.. _Documentation index: docs/index.rst
-.. _GUI guide: docs/gui.rst
-.. _CLI reference: docs/cli_reference.rst
-.. _Scientific scope: docs/scientific_scope.rst
-.. _Python API: docs/api.rst
+``GAMMA`` = Manual input gamma value of lattice parameter. Using in iteration process. [Default = 90]
 
-Testing and reproducibility
----------------------------
+  Only when there is no POSCAR file. If POSCAR file exists, it will automatically calculate this value.
 
-Run the complete test suite with::
 
-  python -m pytest
-
-The tests cover VASP volumetric streaming, bSKAN ``CURRENT`` parsing and
-conversion, symmetry pre-check outcomes, monoclinic plotting, GUI callback
-contracts, cache and browser lifecycle, line-profile export, and image-export
-configuration. Scientific changes should include a small redistributable
-fixture and a numerical regression against the original code or an independent
-reference.
-
-Contributing, support, and citation
------------------------------------
-
-Development and validation requirements are in `CONTRIBUTING.rst`_. Report
-reproducible problems through the `issue tracker`_. Security-sensitive reports
-should follow `SECURITY.md`_. Cite the version used according to
-``CITATION.cff``.
-
-.. _CONTRIBUTING.rst: CONTRIBUTING.rst
-.. _issue tracker: https://github.com/materials-theory/autobskan/issues
-.. _SECURITY.md: SECURITY.md
-
-License
--------
-
-AutoBSKAN is distributed under the MIT License. See ``LICENSE``.
