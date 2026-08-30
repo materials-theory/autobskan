@@ -30,6 +30,10 @@ __status__/
 2_bskan/
 3_result/
 
+# Local calculation datasets
+/examples/
+/test/
+
 # Local development archives retained outside the distributable source tree
 developing.../
 prev_version/

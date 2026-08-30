@@ -11,8 +11,6 @@ from autobskan.calculation import (
     connect,
 )
 
-ROOT = Path(__file__).resolve().parents[1]
-
 
 def _write_minimal_calculation(directory: Path, cursave: str) -> Path:
     asample = directory / "ASAMPLE"
@@ -39,17 +37,26 @@ def _write_minimal_calculation(directory: Path, cursave: str) -> Path:
     return asample
 
 
-def test_real_bskan_header_is_byte_identical():
-    asample = ROOT / "examples/2_hexagonal/1_p2.vasp"
-    current = ROOT / "examples/2_hexagonal/1_p2_nonscf_for_STM_bskan_th_0.5_V_current"
-
-    generated = build_current_head_from_asample(asample, (34, 60, 101))
-    reference = "".join(current.read_text(encoding="ascii").splitlines(keepends=True)[:30])
+def test_synthetic_bskan_header_is_byte_identical(tmp_path):
+    asample = _write_minimal_calculation(tmp_path, "Backup file\n")
+    generated = build_current_head_from_asample(asample, (2, 2, 3))
+    reference = (
+        " synthetic                               \n"
+        "   1.0   \n"
+        "    1.999999    0.000000    0.000000\n"
+        "    0.000000    1.999999    0.000000\n"
+        "    0.000000    0.000000    0.158753\n"
+        "    1\n"
+        " Direct\n"
+        "    0.000000    0.000000   -6.299089\n"
+        "  \n"
+        "    2    2    3\n"
+    )
 
     assert generated.encode("ascii") == reference.encode("ascii")
-    assert len(generated.encode("ascii")) == 983
+    assert len(generated.encode("ascii")) == 233
     assert hashlib.sha256(generated.encode("ascii")).hexdigest() == (
-        "f9b9dc2469cd1204d12f8a41f5e4a1b77a9596a999ec32be1ec11b62496d0e40"
+        "ba17e0cad5c68644c12b17eaeeda810d62a8049a60645f03c043b43a254f4e59"
     )
 
 

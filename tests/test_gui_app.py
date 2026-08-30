@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 import plotly.graph_objects as go
 import pytest
+from ase import Atoms
 from dash.development.base_component import Component
 
 import autobskan
@@ -32,7 +33,6 @@ from autobskan.gui.gui import (
     _line_profile,
     _line_profile_csv,
     _load_current,
-    _load_structure,
     _named_volume_source,
     _overlay_traces,
     _save_upload,
@@ -67,6 +67,31 @@ def _component_by_id(layout, component_id):
         if getattr(component, "id", None) == component_id:
             return component
     raise AssertionError(f"Missing component id: {component_id}")
+
+
+def _write_synthetic_current(path):
+    nx, ny, nz = 4, 3, 5
+    lateral_scale = 1.0 + 0.01 * np.arange(nx * ny).reshape(ny, nx)
+    decay = np.asarray([10.0, 7.0, 4.5, 2.5, 1.0])[:, None, None]
+    values = (decay * lateral_scale).reshape(-1)
+    rows = [
+        " ".join(f"{value:.8e}" for value in values[index : index + 5])
+        for index in range(0, values.size, 5)
+    ]
+    header = (
+        "Synthetic CURRENT\n"
+        "1.0\n"
+        "2.0 0.0 0.0\n"
+        "0.5 1.5 0.0\n"
+        "0.0 0.0 5.2918\n"
+        "1\n"
+        "Selective dynamics\n"
+        "Direct\n"
+        "0.25 0.25 -0.094485 T T T\n"
+        "\n"
+        f"{nx} {ny} {nz}\n"
+    )
+    path.write_text(header + "\n".join(rows) + "\n", encoding="ascii")
 
 
 def test_layout_ids_are_unique_and_debug_console_is_hidden():
@@ -954,30 +979,25 @@ def test_upload_copy_is_kept_outside_working_directory(tmp_path, monkeypatch):
     assert Path(saved).parent != tmp_path
 
 
-def test_public_monoclinic_current_uses_bskan_surface_pipeline():
-    current_path = (
-        Path(__file__).resolve().parents[1]
-        / "examples"
-        / "3_monoclinic"
-        / "CURRENT_29_-1.0"
-    )
+def test_synthetic_current_uses_bskan_surface_pipeline(tmp_path):
+    current_path = tmp_path / "CURRENT"
+    _write_synthetic_current(current_path)
 
     current = _load_current(str(current_path))
-    surface = _surface_stm(current, "CONSTANT CURRENT", 1.0e-5)
+    surface = _surface_stm(current, "CONSTANT CURRENT", 4.0)
 
-    assert tuple(current.grids) == (91, 46, 101)
-    assert surface.shape == (46, 91)
+    assert tuple(current.grids) == (4, 3, 5)
+    assert surface.shape == (3, 4)
     assert np.isfinite(surface).all()
 
 
 def test_repeated_atom_overlay_is_cut_to_surface_bounds():
-    structure_path = (
-        Path(__file__).resolve().parents[1]
-        / "examples"
-        / "3_monoclinic"
-        / "29-structure.vasp"
+    structure = Atoms(
+        "Cu2",
+        scaled_positions=((0.1, 0.1, 0.4), (0.8, 0.7, 0.6)),
+        cell=((2.0, 0.0, 0.0), (0.5, 1.5, 0.0), (0.0, 0.0, 8.0)),
+        pbc=True,
     )
-    structure = _load_structure(str(structure_path))
     x_min = 0.0
     y_min = 0.0
     x_max = float(structure.cell[0, 0]) * 2
