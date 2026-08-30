@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.3.5 - 2026-08-31
+
+- Replaced the legacy Tkinter window with a responsive Dash workspace for
+  bSKAN and VASP volumetric analysis.
+- Added interactive STM, apparent-barrier-height, and finite-height local
+  work-function workflows with live controls, exact numeric inputs, overlays,
+  line profiles, FFT analysis, and independent figure export.
+- Generated Chen CURRENT files directly from ASAMPLE, CURSAVE, and INSCAN while
+  preserving bSKAN-compatible header and body formatting, so Chen calculations
+  no longer require a preliminary Tersoff-Hamann run.
+- Added large-file upload progress, bounded surface caching, multi-window
+  lifecycle handling, scientific documentation, package-data validation, and
+  continuous integration.
+
 ## 1.3.4 - 2026-08-25
 
 - Converted constant-current surface indices to physical heights using the

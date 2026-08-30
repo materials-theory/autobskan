@@ -1,0 +1,52 @@
+name: Bug report
+description: Report reproducible incorrect behavior or a failed workflow.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not attach proprietary VASP or bSKAN output. Reduce input to a shareable reproducer.
+  - type: input
+    id: version
+    attributes:
+      label: AutoBSKAN version
+      description: Output of `autobskan --version` or the GUI version badge.
+    validations:
+      required: true
+  - type: dropdown
+    id: workflow
+    attributes:
+      label: Workflow
+      options:
+        - GUI
+        - Image CLI
+        - Calculation automation
+        - pre-check
+        - Installation or packaging
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      description: Include the command or exact GUI selections and a minimal shareable input.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and observed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, Python version, installation command, VASP version, and bSKAN version where relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      render: shell

@@ -1,0 +1,23 @@
+name: Feature request
+description: Propose a scoped scientific or interface enhancement.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: Research need
+      description: Describe the workflow or scientific limitation, not only the proposed control.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation approach
+      description: Identify reference data, equations, or software against which the result can be checked.

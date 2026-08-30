@@ -8,6 +8,7 @@ import pytest
 
 matplotlib.use("Agg")
 
+from autobskan.gui.gui import _bskanin_export_text
 from autobskan.image.serial_run import (
     _constant_current_iso_values,
     single_current,
@@ -127,3 +128,54 @@ def test_single_current_iso_auto_generates_every_image_and_warns_once(tmp_path, 
     assert all((tmp_path / "images" / path.split("/")[-1]).stat().st_size > 0 for path in outputs)
     captured = capsys.readouterr().out
     assert captured.count("CURRENT header check") == 1
+
+
+@pytest.mark.parametrize(
+    ("input_source", "expected_key", "unexpected_key"),
+    [("BSKAN", "CURRENT", "VOLUME"), ("VASP", "VOLUME", "CURRENT")],
+)
+def test_gui_bskanin_export_uses_source_specific_absolute_paths(
+    tmp_path,
+    input_source,
+    expected_key,
+    unexpected_key,
+):
+    volume = tmp_path / ("sample_current" if input_source == "BSKAN" else "PARCHG")
+    structure = tmp_path / "POSCAR"
+    volume.write_text("data", encoding="ascii")
+    structure.write_text("structure", encoding="ascii")
+
+    content = _bskanin_export_text(
+        simulation="STM",
+        input_source=input_source,
+        volume_path=str(volume),
+        mode="CONSTANT CURRENT",
+        iso_value=1.0e-5,
+        fit_radius=0.5,
+        cmap_name="afmhot",
+        contrast=0.0,
+        brightness=0.0,
+        poscar_path=str(structure),
+        iteration=(3, 3),
+        gaussian_sigma=0.0,
+        gamma=84.315324,
+        display_atoms=False,
+        layers=1,
+        radius_type="ATOMIC",
+        size_ratio=10,
+        display_cell=True,
+    )
+
+    assert f"{expected_key} = {volume.resolve()}" in content
+    assert f"{unexpected_key} =" not in content
+    assert f"POSCAR = {structure.resolve()}" in content
+    assert "ATOM_ADDINFO" not in content
+    assert "CONTOUR_RESOLUTION" not in content
+
+    exported_input = tmp_path / f"{input_source.lower()}-bskan.in"
+    exported_input.write_text(content, encoding="ascii")
+    parsed = Options(exported_input).option_dict
+    parsed_path_key = "CURRENT" if input_source == "BSKAN" else "VOLUME"
+    assert parsed[parsed_path_key] == str(volume.resolve())
+    assert parsed["POSCAR"] == str(structure.resolve())
+    assert parsed["ITERATION"] == [3, 3]

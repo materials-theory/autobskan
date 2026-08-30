@@ -2,8 +2,11 @@ include README.rst
 include LICENSE
 include CITATION.cff
 include CHANGELOG.md
+include CONTRIBUTING.rst
+include SECURITY.md
 include requirements.txt
-recursive-include autobskan *.ini *.in
+recursive-include autobskan *.css *.ini *.in *.js
+recursive-include docs *.py *.rst
 recursive-include tests *.py
 prune build
 prune dist
