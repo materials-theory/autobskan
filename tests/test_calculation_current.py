@@ -8,6 +8,7 @@ import pytest
 from autobskan.calculation import (
     asample_to_current,
     build_current_head_from_asample,
+    connect,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -83,3 +84,18 @@ def test_incomplete_cursave_fails_with_a_clear_error(tmp_path):
 
     with pytest.raises(ValueError, match="inconsistent z-grid lengths"):
         asample_to_current(asample)
+
+
+def test_connect_ctoc_uses_asample_converter_directly(tmp_path, monkeypatch):
+    asample = tmp_path / "ASAMPLE"
+    expected = tmp_path / "CURRENT"
+    calls = []
+
+    def fake_converter(path):
+        calls.append(Path(path))
+        return expected
+
+    monkeypatch.setattr(connect, "asample_to_current", fake_converter)
+
+    assert connect.ctoc(asample) == expected
+    assert calls == [asample]
